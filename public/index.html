@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stock Explorer</title>
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stocks">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{--bg:#0e1116;--panel:#161b22;--panel2:#1c2330;--line:#2a3342;--text:#e6edf3;--mute:#8b98a9;--up:#3fb950;--down:#f85149;--accent:#58a6ff;--warn:#d29922;--c1:#58a6ff;--c2:#3fb950;--c3:#d29922}
 @media (prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f6f8fa;--panel:#fff;--panel2:#f0f3f6;--line:#d8dee4;--text:#1f2328;--mute:#59636e;--up:#1a7f37;--down:#cf222e;--accent:#0969da;--warn:#9a6700;--c1:#0969da;--c2:#1a7f37;--c3:#9a6700}}
@@ -60,6 +66,7 @@ svg text{fill:var(--mute);font-size:11px}
   <h1 onclick="location.hash='#/'">📈 Stock Explorer</h1>
   <div id="searchwrap"><input id="search" placeholder="Search any company or ticker…" autocomplete="off"><div id="sugg"></div></div>
   <span class="muted" id="stamp"></span>
+  <button class="chip" id="install" hidden style="margin-left:auto">⬇ Install app</button>
 </header>
 <main id="app"></main>
 <div id="tip"></div>
@@ -112,6 +119,15 @@ const api = async (u) => {
 };
 const kpi = (label, val, sub = '') => `<div class="kpi"><span>${label}</span><b>${val}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
 const app = $('#app');
+
+// ---------- installable app (PWA) ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+let installEvt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#install').hidden = false; });
+$('#install').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $('#install').hidden = true; };
+addEventListener('appinstalled', () => { $('#install').hidden = true; });
+addEventListener('offline', () => { $('#stamp').textContent = 'Offline: showing last saved data'; });
+addEventListener('online', () => route());
 
 // ---------- search ----------
 const sBox = $('#search'), sugg = $('#sugg');
