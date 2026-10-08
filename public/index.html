@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stock Explorer</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--panel2:#1c2330;--line:#2a3342;--text:#e6edf3;--mute:#8b98a9;--up:#3fb950;--down:#f85149;--accent:#58a6ff;--warn:#d29922;--c1:#58a6ff;--c2:#3fb950;--c3:#d29922}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f6f8fa;--panel:#fff;--panel2:#f0f3f6;--line:#d8dee4;--text:#1f2328;--mute:#59636e;--up:#1a7f37;--down:#cf222e;--accent:#0969da;--warn:#9a6700;--c1:#0969da;--c2:#1a7f37;--c3:#9a6700}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+header{position:sticky;top:0;z-index:5;display:flex;gap:16px;align-items:center;padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;cursor:pointer;white-space:nowrap}
+#searchwrap{position:relative;flex:1;max-width:420px}
+#search{width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+#sugg{position:absolute;top:100%;left:0;right:0;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-top:4px;overflow:hidden;display:none}
+#sugg div{padding:8px 12px;cursor:pointer}#sugg div:hover{background:var(--line)}
+main{max-width:1500px;margin:0 auto;padding:20px}
+.muted{color:var(--mute)}.up{color:var(--up)}.down{color:var(--down)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.chip{padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer;font-size:13px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h3{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+th{font-size:12px;color:var(--mute);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
+th.sorted{color:var(--accent)}
+tbody tr.row{cursor:pointer}tbody tr.row:hover{background:var(--panel2)}
+tbody tr.watch{background:var(--panel2);box-shadow:inset 3px 0 0 var(--warn)}
+.sym{font-weight:700}.nm{color:var(--mute);font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;display:block}
+.bar{width:70px;height:6px;background:var(--line);border-radius:3px;display:inline-block;position:relative;vertical-align:middle}
+.bar i{position:absolute;top:-3px;width:3px;height:12px;border-radius:2px;background:var(--accent)}
+.pe-lo{color:var(--up)}.pe-hi{color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.kpi{background:var(--panel2);border-radius:8px;padding:10px 12px}
+.kpi b{display:block;font-size:17px;margin-top:2px}.kpi span{font-size:12px;color:var(--mute)}
+.hdr{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:14px}
+.hdr h2{margin:0;font-size:26px}.price{font-size:30px;font-weight:700}
+.tabs{display:flex;gap:4px;margin:6px 0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{padding:9px 14px;cursor:pointer;color:var(--mute);border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--text);border-color:var(--accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:900px){.two{grid-template-columns:1fr}}
+.tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;margin-right:8px;font-weight:600;text-transform:uppercase}
+.tag.deal{background:#1a7f3733;color:var(--up)}.tag.analyst{background:#0969da33;color:var(--accent)}.tag.earnings{background:#9a670033;color:var(--warn)}.tag.news{background:var(--line);color:var(--mute)}
+.news li{padding:9px 0;border-bottom:1px solid var(--line);list-style:none}.news{margin:0;padding:0}
+.pill{display:flex;height:22px;border-radius:5px;overflow:hidden;font-size:11px;color:#fff}.pill div{display:flex;align-items:center;justify-content:center}
+svg text{fill:var(--mute);font-size:11px}
+#tip{position:fixed;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;display:none;z-index:9}
+.err{padding:30px;text-align:center;color:var(--down)}
+.note{font-size:12px;color:var(--mute);margin-top:10px}
+.loading{padding:40px;text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1 onclick="location.hash='#/'">📈 Stock Explorer</h1>
+  <div id="searchwrap"><input id="search" placeholder="Search any company or ticker…" autocomplete="off"><div id="sugg"></div></div>
+  <span class="muted" id="stamp"></span>
+</header>
+<main id="app"></main>
+<div id="tip"></div>
+<script>
+// ---------- helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isN = (v) => typeof v === 'number' && isFinite(v);
+const nf = (v, d = 2) => isN(v) ? v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—';
+const usd = (v, d = 2) => isN(v) ? '$' + nf(v, d) : '—';
+const big = (v) => {
+  if (!isN(v)) return '—';
+  const a = Math.abs(v), s = v < 0 ? '-' : '';
+  if (a >= 1e12) return s + '$' + (a / 1e12).toFixed(2) + 'T';
+  if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
+  return s + '$' + nf(a, 0);
+};
+const pct = (v, d = 1) => isN(v) ? (v * 100).toFixed(d) + '%' : '—';      // ratio → %
+const pc = (v, d = 2) => isN(v) ? (v >= 0 ? '+' : '') + v.toFixed(d) + '%' : '—'; // already %
+const cls = (v) => !isN(v) ? '' : v >= 0 ? 'up' : 'down';
+const date = (s) => s ? new Date(s * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const ago = (ms) => { const m = (Date.now() - ms) / 6e4; return m < 60 ? Math.round(m) + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
+// On GitHub Pages (or with ?static) there is no server: read the pre-built snapshot in ./data instead.
+const STATIC = location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('static');
+const staticUrl = (u) => {
+  const url = new URL(u, location.href); let m;
+  if (url.pathname === '/api/top50') return 'data/top50.json';
+  if ((m = url.pathname.match(/^\/api\/stock\/(.+)$/))) return `data/stock/${m[1].toUpperCase()}.json`;
+  if ((m = url.pathname.match(/^\/api\/chart\/(.+)$/))) return `data/chart/${m[1].toUpperCase()}-${url.searchParams.get('range') || '1y'}.json`;
+  return null;
+};
+const api = async (u) => {
+  if (STATIC) {
+    const url = new URL(u, location.href);
+    if (url.pathname === '/api/search') {            // search only covers the published snapshot
+      const q = (url.searchParams.get('q') || '').toLowerCase(), d = await api('/api/top50');
+      return [...(d.watch || []), ...d.rows].filter((r) => r.symbol.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q))
+        .slice(0, 8).map((r) => ({ symbol: r.symbol, name: r.name, exchange: 'snapshot' }));
+    }
+    if (url.pathname.startsWith('/api/pipeline/')) {
+      const all = await (await fetch('data/pipeline.json')).json();
+      return all[url.pathname.split('/').pop().toUpperCase()] || null;
+    }
+    const r = await fetch(staticUrl(u));
+    if (!r.ok) throw new Error('Not in the published snapshot (only the top 50 + watchlist are available on this site)');
+    return r.json();
+  }
+  const r = await fetch(u); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
+};
+const kpi = (label, val, sub = '') => `<div class="kpi"><span>${label}</span><b>${val}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+const app = $('#app');
+
+// ---------- search ----------
+const sBox = $('#search'), sugg = $('#sugg');
+let sTimer;
+sBox.addEventListener('input', () => {
+  clearTimeout(sTimer);
+  const q = sBox.value.trim();
+  if (!q) { sugg.style.display = 'none'; return; }
+  sTimer = setTimeout(async () => {
+    try {
+      const r = await api('/api/search?q=' + encodeURIComponent(q));
+      sugg.innerHTML = r.map((x) => `<div data-s="${esc(x.symbol)}"><b>${esc(x.symbol)}</b> <span class="muted">${esc(x.name)} · ${esc(x.exchange)}</span></div>`).join('');
+      sugg.style.display = r.length ? 'block' : 'none';
+    } catch { sugg.style.display = 'none'; }
+  }, 200);
+});
+sBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' && sBox.value.trim()) go(sBox.value.trim().toUpperCase()); });
+sugg.addEventListener('click', (e) => { const d = e.target.closest('[data-s]'); if (d) go(d.dataset.s); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#searchwrap')) sugg.style.display = 'none'; });
+function go(sym) { sBox.value = ''; sugg.style.display = 'none'; location.hash = '#/' + sym; }
+
+// ---------- router ----------
+let timer;
+async function route() {
+  clearInterval(timer);
+  const sym = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+  window.scrollTo(0, 0);
+  sym ? await detailView(sym) : await homeView();
+}
+addEventListener('hashchange', route);
+route();
+
+// ---------- home: top 50 ----------
+const home = { rows: [], sort: { key: 'marketCap', dir: -1 }, filter: '', chips: new Set() };
+const COLS = [
+  ['rank', '#'], ['symbol', 'Company', 'l'], ['price', 'Price'], ['changePct', '1D'], ['marketCap', 'Mkt cap'],
+  ['pe', 'P/E (TTM)'], ['forwardPE', 'Fwd P/E'], ['eps', 'EPS TTM'], ['epsForward', 'EPS fwd'], ['epsGrowth', 'Fwd EPS Δ'],
+  ['pb', 'P/B'], ['divYield', 'Div yld'], ['range', '52-wk range'], ['earningsTs', 'Next earnings'], ['rating', 'Analysts'],
+];
+const CHIPS = {
+  cheap: ['Fwd P/E < 25', (r) => isN(r.forwardPE) && r.forwardPE < 25],
+  soon: ['Earnings ≤ 14 days', (r) => r.earningsTs && r.earningsTs * 1000 > Date.now() && r.earningsTs * 1000 - Date.now() < 14 * 864e5],
+  low: ['Near 52-wk low', (r) => isN(r.range) && r.range < 0.25],
+  growth: ['Fwd EPS +30%', (r) => isN(r.epsGrowth) && r.epsGrowth > 0.3],
+  div: ['Pays dividend', (r) => isN(r.divYield) && r.divYield > 0],
+};
+
+async function homeView() {
+  app.innerHTML = '<div class="loading">Loading top 50 by market cap…</div>';
+  try { await loadHome(); } catch (e) { app.innerHTML = `<div class="err">Could not load data: ${esc(e.message)}</div>`; return; }
+  renderHome();
+  timer = setInterval(async () => { try { await loadHome(); renderTable(); } catch {} }, 60000);
+}
+async function loadHome() {
+  const d = await api('/api/top50');
+  const derive = (r) => ({
+    ...r,
+    epsGrowth: isN(r.eps) && r.eps > 0 && isN(r.epsForward) ? r.epsForward / r.eps - 1 : null,
+    range: isN(r.high52) && r.high52 > r.low52 ? (r.price - r.low52) / (r.high52 - r.low52) : null,
+  });
+  home.rows = d.rows.map(derive);
+  home.watch = (d.watch || []).map(derive);
+  $('#stamp').textContent = 'Updated ' + new Date(d.updated).toLocaleTimeString();
+}
+function renderHome() {
+  app.innerHTML = `
+    <div class="toolbar">
+      <input id="flt" class="chip" style="min-width:220px;cursor:text" placeholder="Filter by name/ticker" value="${esc(home.filter)}">
+      ${Object.entries(CHIPS).map(([k, [l]]) => `<button class="chip ${home.chips.has(k) ? 'on' : ''}" data-chip="${k}">${l}</button>`).join('')}
+      <span class="muted" id="count"></span>
+    </div>
+    <div class="card scroll" style="padding:0"><table id="tbl"></table></div>
+    <p class="note">Top 50 ranked live by market cap from a ~100-company candidate list. Data: Yahoo Finance (delayed/unofficial). Not investment advice. Click a row for full detail.</p>`;
+  $('#flt').oninput = (e) => { home.filter = e.target.value; renderTable(); };
+  app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => {
+    const k = b.dataset.chip; home.chips.has(k) ? home.chips.delete(k) : home.chips.add(k);
+    b.classList.toggle('on'); renderTable();
+  });
+  renderTable();
+}
+function renderTable() {
+  const { key, dir } = home.sort, f = home.filter.toLowerCase();
+  let rows = home.rows.filter((r) => (!f || r.symbol.toLowerCase().includes(f) || (r.name || '').toLowerCase().includes(f)) &&
+    [...home.chips].every((c) => CHIPS[c][1](r)));
+  rows = rows.slice().sort((a, b) => {
+    const x = a[key], y = b[key];
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir;
+  });
+  const peCls = (v) => !isN(v) ? '' : v < 15 ? 'pe-lo' : v > 40 ? 'pe-hi' : '';
+  const earn = (ts) => {
+    if (!ts) return '—';
+    const d = ts * 1000 - Date.now(), days = Math.ceil(d / 864e5);
+    return d > 0 ? `${date(ts)} <span class="muted">(${days}d)</span>` : `<span class="muted">${date(ts)}</span>`;
+  };
+  // Watchlist rows are pinned on top and ignore the filters/sort.
+  rows = [...(home.watch || []), ...rows];
+  $('#tbl').innerHTML = `<thead><tr>${COLS.map(([k, l, c]) => `<th class="${c || ''} ${k === key ? 'sorted' : ''}" data-k="${k}">${l}${k === key ? (dir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map((r) => `<tr class="row ${r.watch ? 'watch' : ''}" data-s="${esc(r.symbol)}">
+    <td class="${r.watch ? '' : 'muted'}" ${r.watch ? 'style="color:var(--warn)" title="Watchlist"' : ''}>${r.rank}</td>
+    <td class="l"><span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name)}</span></td>
+    <td>${nf(r.price)}</td><td class="${cls(r.changePct)}">${pc(r.changePct)}</td><td>${big(r.marketCap)}</td>
+    <td class="${peCls(r.pe)}">${r.pe > 0 ? nf(r.pe, 1) : 'n/m'}</td><td class="${peCls(r.forwardPE)}" ${r.forwardPE <= 0 ? 'title="Negative expected earnings"' : ''}>${r.forwardPE > 0 ? nf(r.forwardPE, 1) : 'n/m'}</td>
+    <td>${nf(r.eps)}</td><td>${nf(r.epsForward)}</td><td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td>
+    <td>${nf(r.pb, 1)}</td><td>${isN(r.divYield) && r.divYield ? pct(r.divYield) : '—'}</td>
+    <td><span class="bar" title="${nf(r.low52)} – ${nf(r.high52)}">${isN(r.range) ? `<i style="left:calc(${Math.min(1, Math.max(0, r.range)) * 100}% - 1px)"></i>` : ''}</span></td>
+    <td>${earn(r.earningsTs)}</td><td>${esc((r.rating || '—').replace(/^\d+(\.\d+)?\s*-\s*/, ''))}</td></tr>`).join('')}</tbody>`;
+  $('#count').textContent = `${rows.length - (home.watch || []).length} of ${home.rows.length}` + (home.watch?.length ? ` · ★ ${home.watch.length} watchlist` : '');
+  $('#tbl').querySelectorAll('th').forEach((th) => th.onclick = () => {
+    const k = th.dataset.k; home.sort = { key: k, dir: home.sort.key === k ? -home.sort.dir : (k === 'symbol' ? 1 : -1) }; renderTable();
+  });
+  $('#tbl').querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
+}
+
+// ---------- charts ----------
+function lineChart(el, pts, prev) {
+  const W = 900, H = 280, P = { l: 56, r: 12, t: 10, b: 24 };
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const x0 = xs[0], x1 = xs[xs.length - 1];
+  let lo = Math.min(...ys), hi = Math.max(...ys); const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+  const X = (x) => P.l + (x - x0) / (x1 - x0 || 1) * (W - P.l - P.r), Y = (y) => P.t + (1 - (y - lo) / (hi - lo)) * (H - P.t - P.b);
+  const up = ys[ys.length - 1] >= ys[0], col = up ? 'var(--up)' : 'var(--down)';
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
+  const grid = [0, 1, 2, 3].map((i) => { const v = lo + (hi - lo) * i / 3; return `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${nf(v, 0)}</text>`; }).join('');
+  const xl = [0, 1, 2, 3].map((i) => { const t = x0 + (x1 - x0) * i / 3; return `<text x="${X(t)}" y="${H - 6}" text-anchor="middle">${new Date(t).toLocaleDateString('en-US', { month: 'short', year: '2-digit', day: (x1 - x0) < 40 * 864e5 ? 'numeric' : undefined })}</text>`; }).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${grid}${xl}
+    <path d="${d}L${X(x1)} ${H - P.b}L${X(x0)} ${H - P.b}Z" fill="${col}" opacity=".08"/>
+    <path d="${d}" fill="none" stroke="${col}" stroke-width="2"/><line id="cur" y1="${P.t}" y2="${H - P.b}" stroke="var(--mute)" opacity="0"/></svg>`;
+  const svg = el.firstChild, tip = $('#tip'), cur = $('#cur', el);
+  svg.onmousemove = (e) => {
+    const r = svg.getBoundingClientRect(), vx = (e.clientX - r.left) / r.width * W;
+    const t = x0 + (vx - P.l) / (W - P.l - P.r) * (x1 - x0);
+    let lo2 = 0, hi2 = xs.length - 1; while (lo2 < hi2) { const m = (lo2 + hi2) >> 1; xs[m] < t ? lo2 = m + 1 : hi2 = m; }
+    const p = pts[lo2]; cur.setAttribute('x1', X(p[0])); cur.setAttribute('x2', X(p[0])); cur.setAttribute('opacity', '.6');
+    tip.style.display = 'block'; tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 30 + 'px';
+    tip.textContent = `${new Date(p[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}  ${usd(p[1])}`;
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; cur.setAttribute('opacity', '0'); };
+}
+function barChart(el, labels, series) {
+  const W = 900, H = 240, P = { l: 56, r: 8, t: 10, b: 26 };
+  const all = series.flatMap((s) => s.values).filter(isN);
+  let hi = Math.max(0, ...all), lo = Math.min(0, ...all); if (hi === lo) hi = 1;
+  const Y = (v) => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
+  const gw = (W - P.l - P.r) / labels.length, bw = Math.min(28, gw / (series.length + 0.8));
+  const bars = labels.map((_, i) => series.map((s, j) => {
+    const v = s.values[i]; if (!isN(v)) return '';
+    const x = P.l + i * gw + gw / 2 + (j - series.length / 2) * bw, y1 = Y(Math.max(v, 0)), y2 = Y(Math.min(v, 0));
+    return `<rect x="${x}" y="${y1}" width="${bw - 2}" height="${Math.max(1, y2 - y1)}" rx="2" fill="${s.color}"><title>${s.name} ${labels[i]}: ${big(v)}</title></rect>`;
+  }).join('')).join('');
+  const grid = [0, 1, 2, 3].map((i) => { const v = lo + (hi - lo) * i / 3; return `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${big(v).replace('$', '')}</text>`; }).join('');
+  const xl = labels.map((l, i) => `<text x="${P.l + i * gw + gw / 2}" y="${H - 8}" text-anchor="middle">${l}</text>`).join('');
+  const lg = series.map((s) => `<span style="margin-right:14px"><i style="display:inline-block;width:10px;height:10px;background:${s.color};border-radius:2px"></i> ${s.name}</span>`).join('');
+  el.innerHTML = `<div class="muted" style="margin-bottom:6px;font-size:12px">${lg}</div><svg viewBox="0 0 ${W} ${H}" width="100%">${grid}${bars}${xl}</svg>`;
+}
+
+// ---------- detail ----------
+const TABS = ['Overview', 'Financials', 'Earnings', 'Deals & News', 'Analysts', 'Ownership', 'About'];
+async function detailView(sym) {
+  app.innerHTML = `<div class="loading">Loading ${esc(sym)}…</div>`;
+  let s, pipe;
+  try { [s, pipe] = await Promise.all([api('/api/stock/' + encodeURIComponent(sym)), api('/api/pipeline/' + encodeURIComponent(sym)).catch(() => null)]); }
+  catch (e) { app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back to top 50</a></div>`; return; }
+  const p = s.price || {}, tab = sessionStorage.getItem('tab') || 'Overview';
+  app.innerHTML = `<a href="#/">← Top 50</a>
+    <div class="hdr" style="margin-top:8px"><h2>${esc(p.shortName || sym)} <span class="muted" style="font-size:16px">${esc(sym)} · ${esc(p.exchangeName || '')}</span></h2></div>
+    <div class="hdr"><span class="price">${usd(p.regularMarketPrice)}</span><span class="${cls(p.regularMarketChangePercent)}" style="font-size:16px">${pc((p.regularMarketChangePercent ?? NaN) * 100)}</span>
+      <span class="muted">Mkt cap ${big(p.marketCap)}</span><span class="muted">${esc(s.assetProfile?.sector || '')}${s.assetProfile?.industry ? ' · ' + esc(s.assetProfile.industry) : ''}</span></div>
+    <div class="tabs">${TABS.map((t) => `<div class="tab ${t === tab ? 'on' : ''}" data-t="${t}">${t}</div>`).join('')}</div>
+    <div id="pane"></div>`;
+  const show = (t) => { sessionStorage.setItem('tab', t); app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x.dataset.t === t)); const pane = $('#pane'); pane.innerHTML = ''; VIEWS[t](pane, s, pipe); };
+  app.querySelectorAll('.tab').forEach((t) => t.onclick = () => show(t.dataset.t));
+  show(tab);
+}
+
+// derived: latest-4-quarter totals
+const ttm = (arr) => arr && arr.length >= 4 ? arr.slice(-4).reduce((a, b) => a + (b.v ?? 0), 0) : null;
+
+const VIEWS = {
+  Overview(el, s) {
+    const sd = s.summaryDetail || {}, ks = s.defaultKeyStatistics || {}, fd = s.financialData || {}, p = s.price || {};
+    const fcf = fd.freeCashflow ?? ttm(s.quarterly.FreeCashFlow);
+    const netDebt = isN(fd.totalDebt) && isN(fd.totalCash) ? fd.totalDebt - fd.totalCash : null;
+    const epsGrow = isN(ks.trailingEps) && ks.trailingEps > 0 && isN(ks.forwardEps) ? ks.forwardEps / ks.trailingEps - 1 : null;
+    const upside = isN(fd.targetMeanPrice) && isN(p.regularMarketPrice) ? fd.targetMeanPrice / p.regularMarketPrice - 1 : null;
+    el.innerHTML = `<div class="card"><div class="toolbar" id="rng">${['1mo', '6mo', '1y', '5y', 'max'].map((r) => `<button class="chip ${r === '1y' ? 'on' : ''}" data-r="${r}">${r.toUpperCase()}</button>`).join('')}</div><div id="ch" style="min-height:280px"></div></div>
+    <div class="card"><h3>Valuation</h3><div class="grid">
+      ${kpi('P/E (TTM)', nf(sd.trailingPE, 1))}${kpi('Forward P/E', nf(sd.forwardPE, 1))}${kpi('PEG', nf(ks.pegRatio))}
+      ${kpi('Price / Sales', nf(sd.priceToSalesTrailing12Months, 1))}${kpi('Price / Book', nf(ks.priceToBook, 1))}${kpi('EV / EBITDA', nf(ks.enterpriseToEbitda, 1))}
+      ${kpi('EV / Revenue', nf(ks.enterpriseToRevenue, 1))}${kpi('EPS TTM', usd(ks.trailingEps))}${kpi('EPS forward', usd(ks.forwardEps), isN(epsGrow) ? pc(epsGrow * 100, 0) + ' vs TTM' : '')}
+      ${kpi('FCF yield', isN(fcf) && isN(p.marketCap) ? pct(fcf / p.marketCap) : '—', 'FCF / market cap')}${kpi('Earnings yield', isN(sd.trailingPE) ? pct(1 / sd.trailingPE) : '—')}${kpi('Beta', nf(sd.beta))}</div>
+      <div class="note">Trailing EPS/P/E are GAAP; forward EPS/P/E use analyst (usually non-GAAP) estimates, so the gap overstates true growth for companies with large amortisation or stock-comp add-backs.</div></div>
+    <div class="card"><h3>Profitability &amp; growth</h3><div class="grid">
+      ${kpi('Revenue (TTM)', big(fd.totalRevenue))}${kpi('Revenue growth (YoY)', pct(fd.revenueGrowth))}${kpi('Earnings growth (YoY)', pct(fd.earningsGrowth))}
+      ${kpi('Gross margin', pct(fd.grossMargins))}${kpi('Operating margin', pct(fd.operatingMargins))}${kpi('Net margin', pct(fd.profitMargins))}
+      ${kpi('EBITDA', big(fd.ebitda))}${kpi('ROE', pct(fd.returnOnEquity))}${kpi('ROA', pct(fd.returnOnAssets))}</div></div>
+    <div class="card"><h3>Cash &amp; balance sheet</h3><div class="grid">
+      ${kpi('Free cash flow', big(fcf))}${kpi('Operating cash flow', big(fd.operatingCashflow))}${kpi('Cash', big(fd.totalCash))}
+      ${kpi('Total debt', big(fd.totalDebt))}${kpi('Net debt', big(netDebt), isN(netDebt) && netDebt < 0 ? 'net cash' : '')}${kpi('Debt / equity', nf(fd.debtToEquity, 0) + (isN(fd.debtToEquity) ? '%' : ''))}
+      ${kpi('Current ratio', nf(fd.currentRatio))}${kpi('Shares out', isN(ks.sharesOutstanding) ? nf(ks.sharesOutstanding / 1e9, 2) + 'B' : '—')}${kpi('Short % of float', pct(ks.shortPercentOfFloat))}</div></div>
+    <div class="card"><h3>Dividend &amp; trading</h3><div class="grid">
+      ${kpi('Dividend / yield', `${usd(sd.dividendRate)} / ${pct(sd.dividendYield)}`)}${kpi('Payout ratio', pct(sd.payoutRatio))}${kpi('Ex-dividend', date(sd.exDividendDate))}
+      ${kpi('52-wk range', `${nf(sd.fiftyTwoWeekLow, 0)} – ${nf(sd.fiftyTwoWeekHigh, 0)}`)}${kpi('50 / 200-day avg', `${nf(sd.fiftyDayAverage, 0)} / ${nf(sd.twoHundredDayAverage, 0)}`)}
+      ${kpi('Analyst target (mean)', usd(fd.targetMeanPrice), isN(upside) ? pc(upside * 100, 1) + ' vs price' : '')}</div></div>`;
+    const draw = async (r) => {
+      const ch = $('#ch', el); ch.innerHTML = '<div class="loading">Loading chart…</div>';
+      try { const c = await api(`/api/chart/${s.symbol}?range=${r}`); lineChart(ch, c.points, c.prevClose); } catch (e) { ch.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+    };
+    $('#rng', el).querySelectorAll('button').forEach((b) => b.onclick = () => { $('#rng', el).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(b.dataset.r); });
+    draw('1y');
+  },
+
+  Financials(el, s) {
+    const q = s.quarterly, a = s.annual;
+    const rev = q.TotalRevenue || [];
+    if (!rev.length) { el.innerHTML = '<div class="card muted">No statement data available.</div>'; return; }
+    const n = Math.min(8, rev.length), idx = rev.slice(-n).map((_, i) => rev.length - n + i);
+    const lab = idx.map((i) => rev[i].date.slice(0, 7));
+    const get = (k, i) => q[k]?.find((x) => x.date === rev[i].date)?.v ?? null;
+    const fcfAt = (i) => get('FreeCashFlow', i) ?? (isN(get('OperatingCashFlow', i)) && isN(get('CapitalExpenditure', i)) ? get('OperatingCashFlow', i) + get('CapitalExpenditure', i) : null);
+    const yoy = (i) => i >= 4 && isN(rev[i].v) && rev[i - 4].v ? rev[i].v / rev[i - 4].v - 1 : null;
+    const ratio = (a2, b2) => isN(a2) && isN(b2) && b2 ? a2 / b2 : null;
+    const rows = [
+      ['Revenue', (i) => big(rev[i].v)], ['  QoQ growth', (i) => { const g = i > 0 && rev[i - 1].v ? rev[i].v / rev[i - 1].v - 1 : null; return `<span class="${cls(g)}">${pct(g)}</span>`; }],
+      ['  YoY growth', (i) => { const y = yoy(i); return `<span class="${cls(y)}">${pct(y)}</span>`; }],
+      ['Gross margin', (i) => pct(ratio(get('GrossProfit', i), rev[i].v))], ['Operating income', (i) => big(get('OperatingIncome', i))],
+      ['Operating margin', (i) => pct(ratio(get('OperatingIncome', i), rev[i].v))], ['Net income', (i) => big(get('NetIncome', i))],
+      ['Net margin', (i) => pct(ratio(get('NetIncome', i), rev[i].v))], ['Diluted EPS', (i) => usd(get('DilutedEPS', i))],
+      ['R&D', (i) => big(get('ResearchAndDevelopment', i))],
+      ['Operating cash flow', (i) => big(get('OperatingCashFlow', i))], ['Free cash flow', (i) => big(fcfAt(i))],
+      ['FCF margin', (i) => pct(ratio(fcfAt(i), rev[i].v))], ['Cash &amp; ST investments', (i) => big(get('CashCashEquivalentsAndShortTermInvestments', i))],
+      ['Total debt', (i) => big(get('TotalDebt', i))], ['Buybacks', (i) => big(get('RepurchaseOfCapitalStock', i))], ['Dividends paid', (i) => big(get('CashDividendsPaid', i))],
+    ];
+    el.innerHTML = `<div class="card"><h3>Quarterly revenue vs free cash flow</h3><div id="bc"></div></div>
+      <div class="card scroll"><h3>Quarterly (newest on the right)</h3><table><thead><tr><th class="l"></th>${lab.map((l) => `<th>${l}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(([l, f]) => `<tr><td class="l">${l.replace(/^ +/, '&nbsp;&nbsp;')}</td>${idx.map((i) => `<td>${f(i)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    barChart($('#bc', el), lab, [{ name: 'Revenue', color: 'var(--c1)', values: idx.map((i) => rev[i].v) }, { name: 'Free cash flow', color: 'var(--c2)', values: idx.map(fcfAt) }]);
+    const ar = a.TotalRevenue || [];
+    if (ar.length) {
+      const ag = (k, i) => a[k]?.find((x) => x.date === ar[i].date)?.v ?? null, m = Math.min(6, ar.length), ai = ar.slice(-m).map((_, i) => ar.length - m + i);
+      el.insertAdjacentHTML('beforeend', `<div class="card scroll"><h3>Annual</h3><table><thead><tr><th class="l"></th>${ai.map((i) => `<th>${ar[i].date.slice(0, 4)}</th>`).join('')}</tr></thead><tbody>
+        ${[['Revenue', (i) => big(ar[i].v)], ['  YoY', (i) => { const y = i > 0 && ar[i - 1].v ? ar[i].v / ar[i - 1].v - 1 : null; return `<span class="${cls(y)}">${pct(y)}</span>`; }],
+          ['Net income', (i) => big(ag('NetIncome', i))], ['Diluted EPS', (i) => usd(ag('DilutedEPS', i))], ['Free cash flow', (i) => big(ag('FreeCashFlow', i))]]
+          .map(([l, f]) => `<tr><td class="l">${l.replace(/^ +/, '&nbsp;&nbsp;')}</td>${ai.map((i) => `<td>${f(i)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+    }
+  },
+
+  Earnings(el, s) {
+    const ce = s.calendarEvents || {}, ed = ce.earnings || {}, hist = s.earningsHistory?.history || [], trend = s.earningsTrend?.trend || [];
+    const nextTs = (ed.earningsDate || [])[0];
+    const names = { '0q': 'Current quarter', '+1q': 'Next quarter', '0y': 'Current year', '+1y': 'Next year' };
+    el.innerHTML = `<div class="card"><h3>Next earnings</h3><div class="grid">
+      ${kpi('Date', nextTs ? date(nextTs) : '—', nextTs && nextTs * 1000 > Date.now() ? `in ${Math.ceil((nextTs * 1000 - Date.now()) / 864e5)} days` : '')}
+      ${kpi('EPS estimate (avg)', usd(ed.earningsAverage), `${usd(ed.earningsLow)} – ${usd(ed.earningsHigh)}`)}${kpi('Revenue estimate', big(ed.revenueAverage), `${big(ed.revenueLow)} – ${big(ed.revenueHigh)}`)}</div></div>
+    <div class="card scroll"><h3>Estimates &amp; growth</h3><table><thead><tr><th class="l">Period</th><th>EPS avg</th><th>Low–High</th><th>Year-ago EPS</th><th>EPS growth</th><th>Revenue avg</th><th>Rev growth</th><th>Analysts</th></tr></thead><tbody>
+      ${trend.filter((t) => names[t.period]).map((t) => `<tr><td class="l">${names[t.period]} <span class="muted">${esc(t.endDate || '')}</span></td><td>${usd(t.earningsEstimate?.avg)}</td><td>${nf(t.earningsEstimate?.low)}–${nf(t.earningsEstimate?.high)}</td><td>${usd(t.earningsEstimate?.yearAgoEps)}</td>
+      <td class="${cls(t.earningsEstimate?.growth)}">${pct(t.earningsEstimate?.growth)}</td><td>${big(t.revenueEstimate?.avg)}</td><td class="${cls(t.revenueEstimate?.growth)}">${pct(t.revenueEstimate?.growth)}</td><td>${t.earningsEstimate?.numberOfAnalysts ?? '—'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="card scroll"><h3>Surprise history (last 4 quarters)</h3><table><thead><tr><th class="l">Quarter</th><th>Estimate</th><th>Actual</th><th>Difference</th><th>Surprise</th></tr></thead><tbody>
+      ${hist.map((h) => `<tr><td class="l">${date(h.quarter)}</td><td>${usd(h.epsEstimate)}</td><td>${usd(h.epsActual)}</td><td class="${cls(h.epsDifference)}">${usd(h.epsDifference)}</td><td class="${cls(h.surprisePercent)}">${pct(h.surprisePercent)}</td></tr>`).join('') || '<tr><td class="l muted">No history</td></tr>'}</tbody></table></div>`;
+  },
+
+  'Deals & News'(el, s, pipe) {
+    const ce = s.calendarEvents || {}, nextE = (ce.earnings?.earningsDate || [])[0];
+    const upcoming = [
+      nextE && ['Earnings', date(nextE)], ce.exDividendDate && ['Ex-dividend', date(ce.exDividendDate)], ce.dividendDate && ['Dividend pay date', date(ce.dividendDate)],
+    ].filter(Boolean);
+    const deals = s.news.filter((n) => n.tag === 'deal');
+    const newsRow = (n) => `<li><span class="tag ${n.tag}">${n.tag}</span><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="muted">· ${esc(n.source || '')} · ${n.ts ? ago(n.ts) : ''}</span></li>`;
+    el.innerHTML = `${pipe ? `
+      <div class="card"><h3>Forward deals &amp; pipeline <span style="text-transform:none;font-weight:400">· ${esc(pipe.asOf)}</span></h3>
+        <div class="scroll"><table><thead><tr><th class="l">Partner</th><th class="l">What</th><th class="l">Size</th><th class="l">Timing</th></tr></thead><tbody>
+        ${pipe.deals.map((d) => `<tr><td class="l"><b>${esc(d.partner)}</b></td><td class="l" style="white-space:normal;min-width:320px">${esc(d.what)}</td><td class="l" style="white-space:normal">${esc(d.size)}</td><td class="l" style="white-space:normal">${esc(d.timing)}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="two"><div class="card"><h3>Management guidance</h3>${pipe.guidance.map((g) => `<div style="padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted">${esc(g.label)}</span><br><b>${esc(g.value)}</b></div>`).join('')}</div>
+      <div class="card"><h3>Risks flagged</h3><ul>${pipe.risks.map((r) => `<li style="margin-bottom:6px">${esc(r)}</li>`).join('')}</ul></div></div>`
+      : `<div class="card muted">No hand-curated deal pipeline for ${esc(s.symbol)} yet. Add an entry to <code>pipeline.json</code> (see the AVGO example) to show forward deals and guidance here.</div>`}
+    <div class="two"><div class="card"><h3>Upcoming events</h3>${upcoming.map(([l, d]) => `<div style="padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted">${l}</span> <b style="float:right">${d}</b></div>`).join('') || '<span class="muted">None scheduled</span>'}</div>
+    <div class="card"><h3>Deal headlines</h3>${deals.length ? `<ul class="news">${deals.map(newsRow).join('')}</ul>` : '<span class="muted">No headlines tagged as deals. What counts as a deal is decided in <code>classify.js</code>.</span>'}</div></div>
+    <div class="card"><h3>Latest news</h3><div class="toolbar" id="nf">${['all', 'deal', 'earnings', 'analyst', 'news'].map((t) => `<button class="chip ${t === 'all' ? 'on' : ''}" data-f="${t}">${t}</button>`).join('')}</div><ul class="news" id="nl"></ul></div>`;
+    const draw = (f) => { $('#nl', el).innerHTML = s.news.filter((n) => f === 'all' || n.tag === f).map(newsRow).join('') || '<li class="muted">Nothing here</li>'; };
+    $('#nf', el).querySelectorAll('button').forEach((b) => b.onclick = () => { $('#nf', el).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(b.dataset.f); });
+    draw('all');
+  },
+
+  Analysts(el, s) {
+    const fd = s.financialData || {}, rt = s.recommendationTrend?.trend || [], ud = s.upgradeDowngradeHistory?.history || [], px = s.price?.regularMarketPrice;
+    const cur = rt[0], tot = cur ? cur.strongBuy + cur.buy + cur.hold + cur.sell + cur.strongSell : 0;
+    const seg = (n, c, l) => n ? `<div style="flex:${n};background:${c}" title="${l}: ${n}">${n}</div>` : '';
+    const lo = fd.targetLowPrice, hi = fd.targetHighPrice, mean = fd.targetMeanPrice;
+    const span = Math.max(hi ?? 0, px ?? 0) * 1.05, pos = (v) => isN(v) && span ? (v / span * 100) + '%' : '0';
+    el.innerHTML = `<div class="two"><div class="card"><h3>Consensus</h3><div class="grid" style="margin-bottom:14px">
+      ${kpi('Rating', esc((fd.recommendationKey || '—').replace('_', ' ')), `${fd.numberOfAnalystOpinions ?? '—'} analysts · mean ${nf(fd.recommendationMean, 1)} (1=Strong buy)`)}
+      ${kpi('Mean target', usd(mean), isN(mean) && isN(px) ? pc((mean / px - 1) * 100, 1) + ' vs price' : '')}</div>
+      ${cur ? `<div class="pill">${seg(cur.strongBuy, '#1a7f37', 'Strong buy')}${seg(cur.buy, '#3fb950', 'Buy')}${seg(cur.hold, '#9a6700', 'Hold')}${seg(cur.sell, '#cf222e', 'Sell')}${seg(cur.strongSell, '#8b1a1a', 'Strong sell')}</div><div class="note">Strong buy · Buy · Hold · Sell · Strong sell (${tot} ratings this month)</div>` : ''}</div>
+      <div class="card"><h3>Price target range</h3><div style="position:relative;height:60px;margin-top:20px">
+        <div style="position:absolute;top:26px;left:0;right:0;height:6px;background:var(--line);border-radius:3px"></div>
+        ${isN(lo) && isN(hi) ? `<div style="position:absolute;top:26px;height:6px;background:var(--accent);opacity:.5;left:${pos(lo)};width:calc(${pos(hi)} - ${pos(lo)})"></div>` : ''}
+        ${[[lo, 'Low'], [mean, 'Mean'], [hi, 'High'], [px, 'Price']].filter(([v]) => isN(v)).map(([v, l], i) => `<div style="position:absolute;left:${pos(v)};top:${l === 'Price' ? 36 : 0}px;transform:translateX(-50%);text-align:center;font-size:12px;white-space:nowrap"><b>${nf(v, 0)}</b><br><span class="muted">${l}</span></div>`).join('')}</div></div></div>
+      <div class="card scroll"><h3>Recent rating changes</h3><table><thead><tr><th class="l">Date</th><th class="l">Firm</th><th class="l">Action</th><th class="l">From → To</th></tr></thead><tbody>
+      ${ud.slice(0, 15).map((u) => `<tr><td class="l">${date(u.epochGradeDate)}</td><td class="l">${esc(u.firm)}</td><td class="l">${esc(u.action)}</td><td class="l">${esc(u.fromGrade || '—')} → <b>${esc(u.toGrade)}</b></td></tr>`).join('') || '<tr><td class="l muted">None</td></tr>'}</tbody></table></div>`;
+  },
+
+  Ownership(el, s) {
+    const mh = s.majorHoldersBreakdown || {}, ins = s.insiderTransactions?.transactions || [], np = s.netSharePurchaseActivity || {};
+    el.innerHTML = `<div class="card"><h3>Who owns it</h3><div class="grid">
+      ${kpi('Insiders', pct(mh.insidersPercentHeld, 2))}${kpi('Institutions (% of float)', pct(mh.institutionsFloatPercentHeld))}${kpi('Institutions held', pct(mh.institutionsPercentHeld))}${kpi('# institutions', isN(mh.institutionsCount) ? mh.institutionsCount.toLocaleString() : '—')}
+      ${kpi('Insider net shares (6m)', isN(np.netInfoShares) ? nf(np.netInfoShares, 0) : '—', `${np.buyInfoCount ?? 0} buys / ${np.sellInfoCount ?? 0} sells`)}</div></div>
+      <div class="card scroll"><h3>Recent insider transactions</h3><table><thead><tr><th class="l">Date</th><th class="l">Insider</th><th class="l">Role</th><th class="l">Transaction</th><th>Shares</th><th>Value</th></tr></thead><tbody>
+      ${ins.slice(0, 20).map((t) => `<tr><td class="l">${date(t.startDate)}</td><td class="l">${esc(t.filerName)}</td><td class="l">${esc(t.filerRelation)}</td><td class="l" style="white-space:normal;max-width:300px">${esc(t.transactionText || '—')}</td><td>${isN(t.shares) ? nf(t.shares, 0) : '—'}</td><td>${big(t.value)}</td></tr>`).join('') || '<tr><td class="l muted">None</td></tr>'}</tbody></table></div>`;
+  },
+
+  About(el, s) {
+    const a = s.assetProfile || {};
+    el.innerHTML = `<div class="card"><h3>Business</h3><p style="max-width:900px">${esc(a.longBusinessSummary || 'No description.')}</p><div class="grid">
+      ${kpi('Employees', isN(a.fullTimeEmployees) ? a.fullTimeEmployees.toLocaleString() : '—')}${kpi('HQ', esc([a.city, a.state, a.country].filter(Boolean).join(', ')) || '—')}
+      ${kpi('Website', a.website ? `<a href="${esc(a.website)}" target="_blank" rel="noopener">${esc(a.website.replace(/^https?:\/\//, ''))}</a>` : '—')}</div></div>
+      <div class="card scroll"><h3>Leadership</h3><table><thead><tr><th class="l">Name</th><th class="l">Title</th><th>Pay</th></tr></thead><tbody>
+      ${(a.companyOfficers || []).slice(0, 10).map((o) => `<tr><td class="l">${esc(o.name)}</td><td class="l">${esc(o.title)}</td><td>${big(o.totalPay)}</td></tr>`).join('')}</tbody></table></div>`;
+  },
+};
+</script>
+</body>
+</html>

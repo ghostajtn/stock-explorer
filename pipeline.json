@@ -1,0 +1,57 @@
+{
+  "NBIS": {
+    "asOf": "Q2 2026 earnings call, Aug 12, 2026",
+    "guidance": [
+      { "label": "FY26 revenue", "value": "$3.0-3.4B (reaffirmed)" },
+      { "label": "FY26 year-end ARR", "value": "$7-9B (Q2 exit run-rate: $3B)" },
+      { "label": "FY26 adjusted EBITDA margin", "value": "~40%" },
+      { "label": "FY26 capex", "value": "$20-25B" },
+      { "label": "Contracted power by year-end", "value": "5 GW target (raised); >1 GW of new capacity per year from 2027" },
+      { "label": "Committed backlog", "value": "$40B" },
+      { "label": "Customer prepayments (2026)", "value": "~$9B expected" },
+      { "label": "2027 guidance", "value": "Formal guidance later in 2026" }
+    ],
+    "deals": [
+      { "partner": "Reflection, Cohere, a US \"neolab\" and a US quant trading firm", "what": "Four 1-3 year AI cloud contracts signed in Q2; upfront payments cover ~50-60% of the related capex", "size": "Average >$1B each; $20-25M revenue per MW per year", "timing": "Capacity comes online late 2026; revenue mostly 2027+" },
+      { "partner": "Short-term training customers", "what": "Up-to-6-month capacity for time-bound needs (e.g. model releases), sold at a premium; one deal signed recently", "size": "$40-50M per MW, sometimes above", "timing": "Comes online later in 2026" },
+      { "partner": "Investment-grade long-term customers (incl. Microsoft)", "what": "Long-term contracts used to fund the build-out; management says all Microsoft capacity tranches due so far have been delivered, including at the Vineland site", "size": "Part of the $40B committed backlog", "timing": "Multi-year" },
+      { "partner": "Lenders (asset-backed debt)", "what": "$775M asset-backed facility secured in July against contracted cash flows, mid-single-digit rate; management calls the model repeatable", "size": "$775M", "timing": "July 2026; more expected" },
+      { "partner": "Equity markets (ATM program)", "what": "At-the-market share sales to fund growth", "size": "$2.8B gross from 12.7M Class A shares at ~$224 average", "timing": "To date" },
+      { "partner": "Acquisitions", "what": "Eigen AI (inference and compression, ~$331M), Tavily (developer search for AI agents, ~$189M), ClarifAI (inference orchestration, ~$97M)", "size": "~$618M combined fair value", "timing": "Closed / integrating in 2026" },
+      { "partner": "Asset-light partners", "what": "New model in which third parties finance, build and operate sites while Nebius supplies the platform and demand", "size": "Not disclosed", "timing": "Aims to add capacity in 2027+" }
+    ],
+    "risks": [
+      "Capex of $20-25B against ~$3B of revenue: heavy dependence on prepayments, debt and share sales",
+      "Dilution: ATM sales of $2.8B so far",
+      "Lag between powered capacity and revenue (commissioning, cluster build, customer onboarding)",
+      "Local opposition and permitting risk for US data centers (e.g. a New Jersey hearing adjourned without a vote)",
+      "GAAP loss of $190M in Q2 even with positive adjusted EBITDA; customer and GPU-supply concentration"
+    ]
+  },
+  "AVGO": {
+    "asOf": "Q3 FY26 earnings call, Sep 2, 2026",
+    "guidance": [
+      { "label": "Q4 FY26 revenue", "value": "$34.8B (+93% YoY)" },
+      { "label": "Q4 FY26 AI semiconductor revenue", "value": "$21.7B (+236% YoY)" },
+      { "label": "FY26 AI revenue", "value": "$58B (+186%), raised from $56B" },
+      { "label": "FY27 AI revenue (supply secured)", "value": "~$115B" },
+      { "label": "FY28 AI revenue (supply secured)", "value": "~$230B" },
+      { "label": "FY28 EPS", "value": "\"On target to exceed $30\" (Hock Tan)" },
+      { "label": "Q4 gross margin / op. margin", "value": "~73% / ~66% (non-GAAP)" }
+    ],
+    "deals": [
+      { "partner": "Google", "what": "Long-term agreement to develop and supply future TPU generations and AI networking; TPU v8i in production shipments", "size": "\"Multi-tens of billions\" of dollars of TPUs per year", "timing": "Next several years; demand grows into 2028-29" },
+      { "partner": "Anthropic", "what": "Custom TPU capacity: Ironwood (v7) in 2026, TPU v8i in 2027, more in 2028. Expected to be Broadcom's largest XPU customer in 2027", "size": "1 GW (2026), 5 GW (2027), +10 GW (2028)", "timing": "2026-2028" },
+      { "partner": "OpenAI", "what": "\"Jalapeno\" custom accelerator shipping; next-gen XPU near tape-out; third-gen in development", "size": "1.3 GW (2027), 5+ GW (2028)", "timing": "2027-2028" },
+      { "partner": "Meta", "what": "Three generations of MTIA custom accelerators through 2027", "size": "~3 GW line of sight through 2028", "timing": "Through 2028" },
+      { "partner": "Apollo + Blackstone (XPV platform)", "what": "AI XPV financing platform for OpenAI/Anthropic compute; third parties underwrite, Broadcom may give modest residual-value guarantees", "size": "First $35B tranche closed June 2026 (Anthropic 1 GW); >20 GW targeted by end of 2028", "timing": "Tranches through 2028" },
+      { "partner": "Internal capacity", "what": "Singapore substrate fab starts FY27; laser capacity being roughly tripled; Tomahawk 7 (200 Tb/s) taped out", "size": "Q4 capex ~$1.4B", "timing": "FY27" }
+    ],
+    "risks": [
+      "Customer concentration: ~6 XPU customers drive most AI revenue",
+      "Data-center readiness: land, power, HBM, wafers and substrates can limit deployment pace",
+      "Gross margin dilution from memory-heavy XPUs (guided ~73% in Q4)",
+      "Financing structures (XPV) add contingent liabilities"
+    ]
+  }
+}
