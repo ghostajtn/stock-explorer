@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyHeadline } from './classify.js';
 import { sentimentLabel } from './sentiment.js';
+import { computeSignal } from './signal.js';
 
 const PORT = process.env.PORT || 3456;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -221,6 +222,11 @@ http.createServer(async (req, res) => {
       return json(res, 200, qs.map((q) => ({ symbol: q.symbol, name: q.shortName || q.longName, price: q.regularMarketPrice, changePct: q.regularMarketChangePercent })));
     }
     let m;
+    if ((m = u.pathname.match(/^\/api\/signal\/([\w.\-^=]+)$/))) {
+      const sym = m[1].toUpperCase(), s = await stock(sym);
+      const c = await chart(sym, '1y').catch(() => null);
+      return json(res, 200, computeSignal(s, c?.candles?.map((b) => b.c)));
+    }
     if ((m = u.pathname.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
       // Hand-curated forward deals/guidance (edit pipeline.json to add tickers).
       const all = JSON.parse(await fs.readFile(path.join(ROOT, 'pipeline.json'), 'utf8'));
