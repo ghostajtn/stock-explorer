@@ -77,7 +77,7 @@ async function getQuotes(symbols) {
 }
 
 // Always shown above the table, whatever their market-cap rank. Add tickers here.
-const WATCHLIST = ['NBIS'];
+const WATCHLIST = ['NBIS', 'MRNA'];
 
 const top50 = () => cached('top50', 60e3, async () => {
   const quotes = await getQuotes([...new Set([...UNIVERSE, ...WATCHLIST])]);
