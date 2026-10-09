@@ -1,11 +1,20 @@
-// Backtest of the *technical* half of the Buy-setup rule over daily bars. Analyst ratings and news
-// have no point-in-time history in free data, so they cannot be tested. A day is a "setup day" when:
-//   price > 200-day average, 50-day > 200-day, RSI(14) between 40 and 65, price within 20% of the 200-day.
-// For every day we look ahead 21 / 63 / 126 trading days (about 1 / 3 / 6 months) and compare the
-// return after setup days with the return after ANY day (the buy-and-hold baseline for the same stock).
+// Backtests of price-based rules over daily bars. Analyst ratings and news have no point-in-time
+// history in free data, so only price rules can be tested. For every rule ("preset") we mark the
+// days it fires, look ahead 21 / 63 / 126 trading days (about 1 / 3 / 6 months) and compare the
+// return after those days with the return after ANY day (the buy-and-hold baseline for the stock).
 // Consecutive days overlap, so the samples are not independent: treat the numbers as indicative only.
 
 export const HORIZONS = [21, 63, 126];
+
+// Each rule gets the indicator values for day i and says whether the setup is "on".
+export const PRESETS = {
+  current: { name: 'Current Buy-setup rule', about: 'Above 200-day, golden cross, RSI 40–65, within 20% of the 200-day', test: (x) => x.px > x.ma200 && x.ma50 > x.ma200 && x.rsi >= 40 && x.rsi <= 65 && x.px / x.ma200 - 1 <= 0.20 },
+  momentum: { name: 'Strong momentum', about: 'Above 200-day, golden cross, RSI 50–80, within 40% of the 200-day', test: (x) => x.px > x.ma200 && x.ma50 > x.ma200 && x.rsi >= 50 && x.rsi <= 80 && x.px / x.ma200 - 1 <= 0.40 },
+  trend: { name: 'Trend only', about: 'Above 200-day and golden cross, no RSI limit', test: (x) => x.px > x.ma200 && x.ma50 > x.ma200 },
+  pullback: { name: 'Pullback in an uptrend', about: 'Above 200-day, RSI 30–45 (a dip inside a rising trend)', test: (x) => x.px > x.ma200 && x.rsi >= 30 && x.rsi <= 45 },
+  breakout: { name: 'Breakout', about: 'Above 50-day, golden cross, RSI 55–75', test: (x) => x.px > x.ma50 && x.ma50 > x.ma200 && x.rsi >= 55 && x.rsi <= 75 },
+  oversold: { name: 'Oversold bounce', about: 'RSI below 30, any trend (mean reversion)', test: (x) => x.rsi < 30 },
+};
 
 function rsiSeries(c, n = 14) {
   const out = new Array(c.length).fill(null); let gain = 0, loss = 0;
@@ -29,21 +38,27 @@ const summarize = (list) => {
   return { n: list.length, sum, wins, avg: sum / list.length, median: s[s.length >> 1], winRate: wins / list.length };
 };
 
-/** @param bars [{t (ms), c (close)}] oldest first */
-export function runBacktest(bars) {
+/** Backtest every preset. @param bars [{t (ms), c (close)}] oldest first. Returns null with too little history. */
+export function runBacktests(bars) {
   const c = bars.map((b) => b.c), n = c.length;
   if (n < 330) return null;                                   // need 200 days of warm-up plus room to look ahead
-  const ma50 = smaSeries(c, 50), ma200 = smaSeries(c, 200), rsi = rsiSeries(c);
-  const setup = c.map((px, i) => i >= 199 && rsi[i] != null && px > ma200[i] && ma50[i] > ma200[i] && rsi[i] >= 40 && rsi[i] <= 65 && px / ma200[i] - 1 <= 0.20);
-  const horizons = {};
-  for (const h of HORIZONS) {
-    const sig = [], all = [];
-    for (let i = 199; i + h < n; i++) { const r = c[i + h] / c[i] - 1; all.push(r); if (setup[i]) sig.push(r); }
-    horizons[h] = { signal: summarize(sig), all: summarize(all) };
+  const ma50 = smaSeries(c, 50), ma200 = smaSeries(c, 200), rsi = rsiSeries(c), out = {};
+  for (const [key, p] of Object.entries(PRESETS)) {
+    const on = c.map((px, i) => i >= 199 && rsi[i] != null && p.test({ px, ma50: ma50[i], ma200: ma200[i], rsi: rsi[i] }));
+    const horizons = {};
+    for (const h of HORIZONS) {
+      const sig = [], all = [];
+      for (let i = 199; i + h < n; i++) { const r = c[i + h] / c[i] - 1; all.push(r); if (on[i]) sig.push(r); }
+      horizons[h] = { signal: summarize(sig), all: summarize(all) };
+    }
+    const entries = [];                                       // first day of each run of setup days
+    for (let i = 200; i < n; i++) if (on[i] && !on[i - 1]) entries.push({
+      t: bars[i].t, price: c[i], r63: i + 63 < n ? c[i + 63] / c[i] - 1 : null, r126: i + 126 < n ? c[i + 126] / c[i] - 1 : null,
+    });
+    out[key] = { name: p.name, about: p.about, days: n, from: bars[0].t, to: bars[n - 1].t, setupDays: on.filter(Boolean).length, nowInSetup: on[n - 1], horizons, entryCount: entries.length, entries: entries.slice(-8).reverse() };
   }
-  const entries = [];                                           // first day of each run of setup days
-  for (let i = 200; i < n; i++) if (setup[i] && !setup[i - 1]) entries.push({
-    t: bars[i].t, price: c[i], r63: i + 63 < n ? c[i + 63] / c[i] - 1 : null, r126: i + 126 < n ? c[i + 126] / c[i] - 1 : null,
-  });
-  return { days: n, from: bars[0].t, to: bars[n - 1].t, setupDays: setup.filter(Boolean).length, nowInSetup: setup[n - 1], horizons, entryCount: entries.length, entries: entries.slice(-8).reverse() };
+  return out;
 }
+
+/** Just the current Buy-setup rule (used by the per-stock card). */
+export const runBacktest = (bars) => runBacktests(bars)?.current ?? null;

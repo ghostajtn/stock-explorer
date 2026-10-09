@@ -58,6 +58,9 @@ svg text{fill:var(--mute);font-size:11px}
 #tip{position:fixed;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;display:none;z-index:9}
 .sent{display:inline-block;font-size:11px;width:16px;text-align:center;border-radius:4px;margin-right:6px;font-weight:700}
 .sent.pos{background:#1a7f3733;color:var(--up)}.sent.neg{background:#cf222e33;color:var(--down)}.sent.neu{background:var(--line);color:var(--mute)}
+#nav{display:flex;gap:2px;overflow-x:auto}#nav a{padding:6px 10px;border-radius:8px;color:var(--mute);white-space:nowrap;font-size:13px}#nav a:hover{background:var(--panel2);text-decoration:none}#nav a.on{color:var(--text);background:var(--panel2)}
+#market{display:flex;gap:18px;overflow-x:auto;padding:6px 20px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}#market span b{margin:0 4px}
+.hm{position:relative;width:100%;height:640px;border-radius:8px;overflow:hidden}.hm a{position:absolute;overflow:hidden;color:#fff;border:1px solid var(--bg);padding:3px 5px;line-height:1.2;text-decoration:none}.hm a:hover{outline:2px solid var(--text);z-index:2}
 .verdict{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border:1px solid;border-radius:99px;vertical-align:middle}
 .check{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}.check b{width:20px;flex:none;text-align:center}
 .scorebar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:8px 0}.scorebar i{display:block;height:100%}
@@ -75,13 +78,16 @@ svg text{fill:var(--mute);font-size:11px}
 <header>
   <h1 onclick="location.hash='#/'">📈 Stock Explorer</h1>
   <div id="searchwrap"><input id="search" placeholder="Search any company or ticker…" autocomplete="off"><div id="sugg"></div></div>
+  <nav id="nav"></nav>
   <span class="muted" id="stamp"></span>
   <button class="chip" id="install" hidden style="margin-left:auto">⬇ Install app</button>
 </header>
+<div id="market"></div>
 <main id="app"></main>
 <div id="tip"></div>
 <div id="toasts"></div>
 <script src="vendor/lightweight-charts.js"></script>
+<script src="extras.js"></script>
 <script>
 // ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -124,7 +130,7 @@ const api = async (u) => {
       return all[url.pathname.split('/').pop().toUpperCase()] || null;
     }
     const r = await fetch(staticUrl(u));
-    if (!r.ok) throw new Error('Not in the published snapshot (only the top 50 + watchlist are available on this site)');
+    if (!r.ok) throw new Error('Not in the published snapshot (only the top 100 + watchlist are available on this site)');
     return r.json();
   }
   const r = await fetch(u); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
@@ -196,9 +202,27 @@ setInterval(checkAlerts, 60000); setTimeout(checkAlerts, 4000);
 const VERDICT = { buy: ['Buy setup', 'var(--up)'], watch: ['Watch', 'var(--warn)'], neutral: ['Neutral', 'var(--mute)'], caution: ['Caution', 'var(--down)'], nodata: ['Not enough data', 'var(--mute)'] };
 const verdictChip = (v) => `<span class="verdict" style="border-color:${VERDICT[v][1]};color:${VERDICT[v][1]}">${VERDICT[v][0]}</span>`;
 const signalCache = new Map();                          // symbol -> { t, sig }, reused for 5 minutes
+// One score per stock per day is kept in this browser so you can see how a signal moves over time.
+const sigHist = {
+  all() { try { return JSON.parse(localStorage.getItem('se.sigHist')) || {}; } catch { return {}; } },
+  of(sym) { return this.all()[sym] || []; },
+  record(sig) {
+    if (!sig?.symbol || sig.verdict === 'nodata') return;
+    try {
+      const a = this.all(), day = new Date().toISOString().slice(0, 10), l = a[sig.symbol] || [];
+      if (l.length && l[l.length - 1][0] === day) l[l.length - 1] = [day, sig.score, sig.verdict]; else l.push([day, sig.score, sig.verdict]);
+      a[sig.symbol] = l.slice(-400); localStorage.setItem('se.sigHist', JSON.stringify(a));
+    } catch {}
+  },
+};
 async function getSignal(sym) {
   const hit = signalCache.get(sym); if (hit && Date.now() - hit.t < 300e3) return hit.sig;
-  const sig = await api('/api/signal/' + encodeURIComponent(sym)); signalCache.set(sym, { t: Date.now(), sig }); return sig;
+  const sig = await api('/api/signal/' + encodeURIComponent(sym)); signalCache.set(sym, { t: Date.now(), sig }); sigHist.record(sig); return sig;
+}
+// "⚠ Earnings in N days" badge: results can move a stock sharply, so it's worth knowing before acting.
+function earnWarn(s) {
+  const ts = (s.calendarEvents?.earnings?.earningsDate || [])[0], d = ts ? Math.ceil((ts * 1000 - Date.now()) / 864e5) : null;
+  return isN(d) && d >= 0 && d <= 14 ? `<span class="tag earnings" style="font-size:12px" title="${date(ts)}">⚠ Earnings ${d === 0 ? 'today' : 'in ' + d + (d === 1 ? ' day' : ' days')}</span>` : '';
 }
 // Alert when a watched stock newly becomes a "Buy setup" (checked every 5 minutes while the app is open).
 async function checkSignals() {
@@ -243,7 +267,7 @@ async function backtestAll() {
   box.innerHTML = `<div class="muted" style="margin:6px 0">${done} stocks, ${setups.toLocaleString()} separate setups over about 5 years, all pooled.</div>${btTable(pooled)}${BT_NOTE}`;
 }
 
-// Scan the top 50 + server watchlist for stocks that currently pass the Buy-setup rule (4 requests at a time).
+// Scan the top 100 + server watchlist for stocks that currently pass the Buy-setup rule (4 requests at a time).
 async function scanSignals() {
   const box = $('#scan'), btn = $('#scanbtn'); if (!box) return;
   const syms = [...new Set([...(home.watch || []), ...home.rows].map((r) => r.symbol))], done = []; let i = 0;
@@ -304,6 +328,8 @@ async function route() {
   clearInterval(timer);
   const sym = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
   window.scrollTo(0, 0);
+  renderNav(sym);
+  if (sym.startsWith('~')) { const [page, arg] = sym.slice(1).split('/'); return EXTRA_PAGES[page] ? EXTRA_PAGES[page](app, arg) : (app.innerHTML = '<div class="err">Page not found</div>'); }
   sym ? await detailView(sym) : await homeView();
 }
 addEventListener('hashchange', route);
@@ -325,7 +351,7 @@ const CHIPS = {
 };
 
 async function homeView() {
-  app.innerHTML = '<div class="loading">Loading top 50 by market cap…</div>';
+  app.innerHTML = '<div class="loading">Loading the top 100 by market cap…</div>';
   try { await loadHome(); } catch (e) { app.innerHTML = `<div class="err">Could not load data: ${esc(e.message)}</div>`; return; }
   renderHome();
   timer = setInterval(async () => { try { await loadHome(); renderTable(); renderMyWl(); } catch {} }, 60000);
@@ -351,9 +377,9 @@ function renderHome() {
       <span class="muted" id="count"></span>
     </div>
     <div class="card scroll"><h3>★ My watchlist</h3><div id="mywl"></div></div>
-    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan top 50 for Buy setups</button><button class="chip" id="btallbtn">Backtest the rule on all 50 (5 years)</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div><div id="btall"></div></div>`}
+    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan the top 100 for Buy setups</button><button class="chip" id="btallbtn">Backtest the rule on all 100 (5 years)</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div><div id="btall"></div></div>`}
     <div class="card scroll" style="padding:0"><table id="tbl"></table></div>
-    <p class="note">Top 50 ranked live by market cap from a ~100-company candidate list. Data: Yahoo Finance (delayed/unofficial). Not investment advice. Click a row for full detail.</p>`;
+    <p class="note">Top 100 ranked live by market cap from a ~230-company candidate list. Data: Yahoo Finance (delayed/unofficial). Not investment advice. Click a row for full detail.</p>`;
   $('#flt').oninput = (e) => { home.filter = e.target.value; renderTable(); };
   app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => {
     const k = b.dataset.chip; home.chips.has(k) ? home.chips.delete(k) : home.chips.add(k);
@@ -530,12 +556,12 @@ async function detailView(sym) {
   app.innerHTML = `<div class="loading">Loading ${esc(sym)}…</div>`;
   let s, pipe;
   try { [s, pipe] = await Promise.all([api('/api/stock/' + encodeURIComponent(sym)), api('/api/pipeline/' + encodeURIComponent(sym)).catch(() => null)]); }
-  catch (e) { app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back to top 50</a></div>`; return; }
+  catch (e) { app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back home</a></div>`; return; }
   const p = s.price || {}, tab = sessionStorage.getItem('tab') || 'Overview';
-  app.innerHTML = `<a href="#/">← Top 50</a>
+  app.innerHTML = `<a href="#/">← Home</a>
     <div class="hdr" style="margin-top:8px"><h2>${esc(p.shortName || sym)} <span class="muted" style="font-size:16px">${esc(sym)} · ${esc(p.exchangeName || '')}</span> <button class="star" id="hstar"></button> <span id="hsig"></span></h2></div>
     <div class="hdr"><span class="price">${usd(p.regularMarketPrice)}</span><span class="${cls(p.regularMarketChangePercent)}" style="font-size:16px">${pc((p.regularMarketChangePercent ?? NaN) * 100)}</span>
-      <span class="muted">Mkt cap ${big(p.marketCap)}</span><span class="muted">${esc(s.assetProfile?.sector || '')}${s.assetProfile?.industry ? ' · ' + esc(s.assetProfile.industry) : ''}</span></div>
+      <span class="muted">Mkt cap ${big(p.marketCap)}</span>${earnWarn(s)}<span class="muted">${esc(s.assetProfile?.sector || '')}${s.assetProfile?.industry ? ' · ' + esc(s.assetProfile.industry) : ''}</span></div>
     <div class="tabs">${TABS.map((t) => `<div class="tab ${t === tab ? 'on' : ''}" data-t="${t}">${t}</div>`).join('')}</div>
     <div id="pane"></div>`;
   wlSym = sym.toUpperCase(); renderWlBar();
@@ -684,6 +710,12 @@ const VIEWS = {
         <div class="alerts" style="margin-top:14px"><label><input type="checkbox" id="sigalert" ${w?.sig ? 'checked' : ''}> Alert me when <b>${esc(s.symbol)}</b> becomes a Buy setup</label>${STATIC ? '<span class="muted">(needs the local app)</span>' : ''}</div></div>
       ${groups.map((g) => `<div class="card"><h3>${g}</h3>${sig.checks.filter((c) => c.group === g).map((c) =>
         `<div class="check"><b style="color:${c.pass === true ? 'var(--up)' : c.pass === false ? 'var(--down)' : 'var(--mute)'}">${c.pass === true ? '✔' : c.pass === false ? '✖' : '?'}</b><div>${esc(c.label)} <span class="muted">(${c.weight} pts)</span><div class="muted" style="font-size:12px">${esc(c.detail)}</div></div></div>`).join('')}</div>`).join('')}
+      <div class="card" id="sh"><h3>Signal history (saved on this computer)</h3>${(() => {
+        const h = sigHist.of(s.symbol); if (h.length < 2) return '<span class="muted">One score is saved per day you open this stock, so a history builds up over time.</span>';
+        const W = 600, H = 90, X = (i) => 8 + i / (h.length - 1) * (W - 16), Y = (v) => 6 + (1 - v / 100) * (H - 12);
+        return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="8" x2="${W - 8}" y1="${Y(85)}" y2="${Y(85)}" stroke="var(--up)" stroke-dasharray="4" opacity=".5"/><text x="${W - 8}" y="${Y(85) - 3}" text-anchor="end">Buy-setup level (85)</text>
+          <path d="${h.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${h.map((p, i) => `<circle cx="${X(i)}" cy="${Y(p[1])}" r="3" fill="${VERDICT[p[2]][1]}"><title>${p[0]}: ${p[1]} (${VERDICT[p[2]][0]})</title></circle>`).join('')}</svg><div class="muted" style="font-size:12px">${h.length} days saved, from ${h[0][0]} to ${h[h.length - 1][0]}.</div>`;
+      })()}</div>
       <p class="note">This is an automatic checklist built from public data (Yahoo Finance) and headline wording. It cannot know your goals, risk or tax situation, and past patterns don't guarantee future results. It is information, not investment advice, and the app never buys or sells anything. Do your own research before acting.</p>`;
     el.insertAdjacentHTML('beforeend', '<div class="card" id="bt"><h3>Backtest: how the price-based rule did on this stock (5 years)</h3><div class="loading">Running…</div></div>');
     api('/api/backtest/' + encodeURIComponent(s.symbol)).then(({ result: r }) => {
@@ -734,8 +766,16 @@ const VIEWS = {
   },
 
   Ownership(el, s) {
-    const mh = s.majorHoldersBreakdown || {}, ins = s.insiderTransactions?.transactions || [], np = s.netSharePurchaseActivity || {};
-    el.innerHTML = `<div class="card"><h3>Who owns it</h3><div class="grid">
+    const mh = s.majorHoldersBreakdown || {}, ins = s.insiderTransactions?.transactions || [], np = s.netSharePurchaseActivity || {}, ks = s.defaultKeyStatistics || {};
+    const buys = np.buyInfoCount ?? 0, sells = np.sellInfoCount ?? 0, shortPct = ks.shortPercentOfFloat;
+    const netSh = np.netInfoShares, netBuying = isN(netSh) ? netSh > 0 : buys > sells;     // net shares is the better measure when Yahoo has it
+    const insRead = !buys && !sells ? ['No insider trades reported in the last 6 months', 'var(--mute)'] : netBuying ? ['Insiders are net BUYERS (more shares bought than sold)', 'var(--up)'] : buys === 0 ? ['Insiders are only selling (often routine: tax or scheduled plans)', 'var(--warn)'] : ['Insiders are net sellers (often routine, so weigh it lightly)', 'var(--warn)'];
+    const shortRead = !isN(shortPct) ? ['No short-interest data', 'var(--mute)'] : shortPct > 0.15 ? ['Very heavily shorted (15%+ of float): big bets against it, and squeezes are possible', 'var(--down)'] : shortPct > 0.07 ? ['Moderately shorted (7–15% of float)', 'var(--warn)'] : ['Lightly shorted (under 7% of float)', 'var(--up)'];
+    el.innerHTML = `<div class="card"><h3>Insider &amp; short-interest read</h3>
+      <div class="check"><b style="color:${insRead[1]}">●</b><div>${insRead[0]}<div class="muted" style="font-size:12px">${buys} buys / ${sells} sells in the last 6 months, net ${isN(np.netInfoShares) ? nf(np.netInfoShares, 0) : '—'} shares</div></div></div>
+      <div class="check"><b style="color:${shortRead[1]}">●</b><div>${shortRead[0]}<div class="muted" style="font-size:12px">Short interest ${pct(shortPct)} of float · ${isN(ks.shortRatio) ? nf(ks.shortRatio, 1) + ' days to cover' : 'days to cover n/a'}</div></div></div>
+      <div class="note">Insiders sell for many ordinary reasons, but they only buy for one: they expect the price to rise. Buying is usually the more meaningful signal.</div></div>
+      <div class="card"><h3>Who owns it</h3><div class="grid">
       ${kpi('Insiders', pct(mh.insidersPercentHeld, 2))}${kpi('Institutions (% of float)', pct(mh.institutionsFloatPercentHeld))}${kpi('Institutions held', pct(mh.institutionsPercentHeld))}${kpi('# institutions', isN(mh.institutionsCount) ? mh.institutionsCount.toLocaleString() : '—')}
       ${kpi('Insider net shares (6m)', isN(np.netInfoShares) ? nf(np.netInfoShares, 0) : '—', `${np.buyInfoCount ?? 0} buys / ${np.sellInfoCount ?? 0} sells`)}</div></div>
       <div class="card scroll"><h3>Recent insider transactions</h3><table><thead><tr><th class="l">Date</th><th class="l">Insider</th><th class="l">Role</th><th class="l">Transaction</th><th>Shares</th><th>Value</th></tr></thead><tbody>

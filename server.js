@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyHeadline } from './classify.js';
 import { sentimentLabel } from './sentiment.js';
 import { computeSignal } from './signal.js';
-import { runBacktest } from './backtest.js';
+import { runBacktests } from './backtest.js';
 
 const PORT = process.env.PORT || 3456;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -15,12 +15,20 @@ const UA = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
 };
 
-// Candidate universe: ~100 of the largest listed companies. We rank by live market cap
-// and keep the top 50, so a name that grows into the top 50 appears automatically.
+// Candidate universe: ~230 of the largest listed companies. We rank by live market cap
+// and keep the top TOP_N, so a name that grows into the top 100 appears automatically.
+// (Tickers Yahoo doesn't return a market cap for are simply skipped.)
+const TOP_N = 100;
 const UNIVERSE = `AAPL MSFT NVDA GOOGL AMZN META AVGO TSLA BRK-B LLY WMT JPM V ORCL MA XOM NFLX COST JNJ HD PG ABBV BAC
 TMUS CVX KO CRM AMD CSCO WFC PLTR IBM MRK PM ABT GE NOW AXP MCD LIN TMO ISRG DIS QCOM INTU CAT UBER TXN BKNG GS
 VZ T RTX AMGN PEP ADBE TSM ASML SAP NVO AZN BABA SHEL TM MU LRCX AMAT ANET NEE SPGI PGR BLK SCHW ACN C MS DHR
-UNH PFE SYK BSX LOW HON ETN PANW KLAC ARM ADI CRWD APP SHOP COP TJX CMCSA BX SNPS CDNS SPCX`.split(/\s+/);
+UNH PFE SYK BSX LOW HON ETN PANW KLAC ARM ADI CRWD APP SHOP COP TJX CMCSA BX SNPS CDNS SPCX
+INTC BA UNP UPS LMT DE GILD VRTX REGN MDLZ MMC CB SO DUK SBUX NKE MO CI ELV CVS MCK ZTS BMY PLD AMT EQIX WM SHW
+ICE CME PYPL FI ADP MMM NOC GD FDX CSX NSC EMR ITW TGT ROST ORLY AZO CMG MAR HLT ABNB F GM SLB EOG OXY MPC PSX VLO
+PNC USB TFC COF BK TRV AFL AIG PRU MET D AEP SRE EXC HCA BDX SYK MRVL FTNT ADSK WDAY TEAM DDOG COIN MELI SE PDD JD
+SONY TTE BP UL DEO TD RY BNS ENB CNQ SU NEM FCX SCCO APD ECL CL KMB KHC KDP GIS STZ HSY MNST PAYX PCAR CTAS FAST
+MSI ROP AME TT CARR OTIS CEG VST NRG LHX HWM TDG ODFL URI WMB KMI ET EPD OKE PSA O SPG CCI DLR VICI WELL AVB EQR
+HUM CNC MCO MSCI FICO CPRT IDXX IQV EW A RMD DXCM ALGN MTD WAT ILMN BIIB MRNA AMP HIG FITB NTRS DFS SYF`.split(/\s+/);
 
 // ---------- tiny TTL cache ----------
 const cache = new Map();
@@ -99,6 +107,8 @@ const top50 = () => cached('top50', 60e3, async () => {
       divYield: q.trailingAnnualDividendYield ?? null,
       low52: q.fiftyTwoWeekLow,
       high52: q.fiftyTwoWeekHigh,
+      divRate: q.trailingAnnualDividendRate ?? null,
+      divDate: q.dividendDate ?? null,
       ma50: q.fiftyDayAverage ?? null,
       ma200: q.twoHundredDayAverage ?? null,
       earningsTs: q.earningsTimestamp ?? null,
@@ -108,7 +118,7 @@ const top50 = () => cached('top50', 60e3, async () => {
   const rows = quotes
     .filter((q) => q.marketCap && UNIVERSE.includes(q.symbol))
     .sort((a, b) => b.marketCap - a.marketCap)
-    .slice(0, 50)
+    .slice(0, TOP_N)
     .map((q, i) => toRow(q, i + 1));
   const watch = WATCHLIST.map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean)
     .map((q) => ({ ...toRow(q, '★'), watch: true }));
@@ -216,9 +226,14 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/api/top50') return json(res, 200, await top50());
     if (u.pathname === '/api/search') return json(res, 200, await search(u.searchParams.get('q') || ''));
+    if (u.pathname === '/api/market') {                  // index/rates strip shown above every page
+      const MK = [['^GSPC', 'S&P 500'], ['^IXIC', 'Nasdaq'], ['^DJI', 'Dow'], ['^VIX', 'VIX (fear)'], ['^TNX', '10-yr yield'], ['DX-Y.NYB', 'US dollar'], ['GC=F', 'Gold'], ['CL=F', 'Oil'], ['BTC-USD', 'Bitcoin']];
+      const qs = await cached('market', 30e3, () => getQuotes(MK.map((m) => m[0])));
+      return json(res, 200, MK.map(([symbol, name]) => { const q = qs.find((x) => x.symbol === symbol) || {}; return { symbol, name, price: q.regularMarketPrice ?? null, changePct: q.regularMarketChangePercent ?? null }; }));
+    }
     if (u.pathname === '/api/quotes') {
       // Live prices for the browser-side watchlist/alerts: ?symbols=AAPL,MSFT (max 50).
-      const syms = (u.searchParams.get('symbols') || '').toUpperCase().split(',').filter((s) => /^[\w.\-^=]{1,12}$/.test(s)).slice(0, 50);
+      const syms = (u.searchParams.get('symbols') || '').toUpperCase().split(',').filter((s) => /^[\w.\-^=]{1,12}$/.test(s)).slice(0, 100);
       const qs = syms.length ? await cached('quotes:' + syms.join(','), 30e3, () => getQuotes(syms)) : [];
       return json(res, 200, qs.map((q) => ({ symbol: q.symbol, name: q.shortName || q.longName, price: q.regularMarketPrice, changePct: q.regularMarketChangePercent })));
     }
@@ -230,7 +245,8 @@ http.createServer(async (req, res) => {
     }
     if ((m = u.pathname.match(/^\/api\/backtest\/([\w.\-^=]+)$/))) {
       const c = await chart(m[1].toUpperCase(), '5yd');
-      return json(res, 200, { symbol: m[1].toUpperCase(), result: runBacktest(c.candles.map((b) => ({ t: b.t, c: b.c }))) });
+      const all = runBacktests(c.candles.map((b) => ({ t: b.t, c: b.c })));
+      return json(res, 200, { symbol: m[1].toUpperCase(), result: all?.current ?? null, ...(u.searchParams.has('all') ? { presets: all } : {}) });
     }
     if ((m = u.pathname.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
       // Hand-curated forward deals/guidance (edit pipeline.json to add tickers).
