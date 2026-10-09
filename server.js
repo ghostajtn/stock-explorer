@@ -103,8 +103,31 @@ const AI_GROUPS = {
 };
 const AI_SYMBOLS = [...new Set(Object.values(AI_GROUPS).flatMap((g) => g.split(' ')))];
 
+// Analyst price targets are not in Yahoo's bulk quote feed, so they're fetched per stock (small
+// 'financialData' request, 8 at a time) and kept for 30 minutes. A failed lookup retries in ~5 minutes.
+const TARGETS = new Map();                                // symbol -> { t, mean, high, low }
+let targetsRun = null;
+function refreshTargets(symbols) {
+  if (targetsRun) return targetsRun;
+  const queue = symbols.filter((s) => { const x = TARGETS.get(s); return !x || Date.now() - x.t > 30 * 60e3; });
+  if (!queue.length) return Promise.resolve();
+  const worker = async () => {
+    for (let s; (s = queue.shift());) {
+      try {
+        const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=financialData`);
+        const fd = unwrap(j.quoteSummary?.result?.[0] || {}).financialData || {};
+        TARGETS.set(s, { t: Date.now(), mean: fd.targetMeanPrice ?? null, high: fd.targetHighPrice ?? null, low: fd.targetLowPrice ?? null });
+      } catch { TARGETS.set(s, { t: Date.now() - 25 * 60e3, mean: null, high: null, low: null }); }
+    }
+  };
+  return (targetsRun = Promise.all(Array.from({ length: 8 }, worker)).finally(() => { targetsRun = null; }));
+}
+
 const top50 = () => cached('top50', 60e3, async () => {
   const quotes = await getQuotes([...new Set([...UNIVERSE, ...WATCHLIST, ...AI_SYMBOLS])]);
+  const shown = new Set([...quotes.filter((q) => q.marketCap && UNIVERSE.includes(q.symbol)).sort((a, b) => b.marketCap - a.marketCap).slice(0, TOP_N).map((q) => q.symbol), ...WATCHLIST, ...AI_SYMBOLS]);
+  // Wait a few seconds so the first load already has most targets; the rest fill in on the next refresh.
+  await Promise.race([refreshTargets([...shown]), new Promise((r) => setTimeout(r, 7000))]);
   const toRow = (q, rank) => ({
       rank,
       symbol: q.symbol,
@@ -117,6 +140,9 @@ const top50 = () => cached('top50', 60e3, async () => {
       eps: q.epsTrailingTwelveMonths ?? null,
       epsForward: q.epsForward ?? null,
       epsYear: q.epsCurrentYear ?? null,
+      targetMean: TARGETS.get(q.symbol)?.mean ?? null,
+      targetHigh: TARGETS.get(q.symbol)?.high ?? null,
+      targetLow: TARGETS.get(q.symbol)?.low ?? null,
       pb: q.priceToBook ?? null,
       divYield: q.trailingAnnualDividendYield ?? null,
       low52: q.fiftyTwoWeekLow,

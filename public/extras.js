@@ -36,7 +36,7 @@ function squarify(items, x, y, w, h) {                  // items: [{ v }] sorted
   }
   return out;
 }
-const MAPS = { changePct: ['Today', 0.03, (r) => r.changePct / 100], vs50: ['vs 50-day', 0.12, (r) => r.vs50], vs200: ['vs 200-day', 0.25, (r) => r.vs200] };
+const MAPS = { changePct: ['Today', 0.03, (r) => r.changePct / 100], upside: ['Upside to analyst target', 0.4, (r) => r.upside], vs50: ['vs 50-day', 0.12, (r) => r.vs50], vs200: ['vs 200-day', 0.25, (r) => r.vs200] };
 const heat = (v, cap) => {                               // red <-> grey <-> green
   if (!isN(v)) return '#30363d'; const t = Math.min(Math.abs(v) / cap, 1), a = v >= 0 ? [35, 134, 54] : [218, 54, 51], b = [48, 54, 61];
   return `rgb(${a.map((c, i) => Math.round(b[i] + (c - b[i]) * (0.25 + 0.75 * t))).join(',')})`;
@@ -250,15 +250,15 @@ async function aiPage(el) {
   await ensureHome();
   const groups = home.ai || [], all = groups.flatMap((g) => g.rows), upN = all.filter((r) => r.changePct > 0).length;
   const avg = (rs) => { const v = rs.map((r) => r.changePct).filter(isN); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
-  const SORTS = { marketCap: 'Market cap', changePct: 'Today', vs50: 'vs 50-day', vs200: 'vs 200-day', forwardPE: 'Fwd P/E' };
+  const SORTS = { marketCap: 'Market cap', changePct: 'Today', upside: 'Upside to target', vs50: 'vs 50-day', vs200: 'vs 200-day', forwardPE: 'Fwd P/E' };
   const sig = new Map();                                         // symbol -> signal, filled by the scan button
   const draw = () => {
     $('#aibody').innerHTML = groups.map((g) => {
       const rows = g.rows.slice().sort((a, b) => aiSort === 'forwardPE' ? (a[aiSort] > 0 ? a[aiSort] : 1e9) - (b[aiSort] > 0 ? b[aiSort] : 1e9) : (b[aiSort] ?? -1e9) - (a[aiSort] ?? -1e9)), a = avg(rows);
-      return `<div class="card scroll"><h3>${esc(g.group)} <span class="muted" style="text-transform:none;letter-spacing:0">· average today <span class="${cls(a)}">${pc(a)}</span></span></h3><table><thead><tr><th class="l">Company</th><th>Price</th><th>1D</th><th>Mkt cap</th><th>P/E</th><th>Fwd P/E</th><th>Fwd EPS Δ</th><th>vs 50-day</th><th>vs 200-day</th><th>Analysts</th><th>Signal</th></tr></thead><tbody>${rows.map((r) => {
+      return `<div class="card scroll"><h3>${esc(g.group)} <span class="muted" style="text-transform:none;letter-spacing:0">· average today <span class="${cls(a)}">${pc(a)}</span></span></h3><table><thead><tr><th class="l">Company</th><th>Price</th><th>1D</th><th>Mkt cap</th><th>P/E</th><th>Fwd P/E</th><th>Fwd EPS Δ</th><th>Analyst target</th><th>Upside</th><th>vs 50-day</th><th>vs 200-day</th><th>Analysts</th><th>Signal</th></tr></thead><tbody>${rows.map((r) => {
         const s = sig.get(r.symbol);
         return `<tr class="row" data-s="${esc(r.symbol)}"><td class="l"><span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name || '')}</span></td><td>${nf(r.price)}</td><td class="${cls(r.changePct)}">${pc(r.changePct)}</td><td>${big(r.marketCap)}</td><td>${r.pe > 0 ? nf(r.pe, 1) : 'n/m'}</td><td>${r.forwardPE > 0 ? nf(r.forwardPE, 1) : 'n/m'}</td>
-          <td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td><td class="${cls(r.vs50)}">${isN(r.vs50) ? pc(r.vs50 * 100, 1) : '—'}</td><td class="${cls(r.vs200)}">${isN(r.vs200) ? pc(r.vs200 * 100, 1) : '—'}</td>
+          <td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td><td>${isN(r.targetMean) ? nf(r.targetMean) : '—'}</td><td class="${cls(r.upside)}">${isN(r.upside) ? pc(r.upside * 100, 1) : '—'}</td><td class="${cls(r.vs50)}">${isN(r.vs50) ? pc(r.vs50 * 100, 1) : '—'}</td><td class="${cls(r.vs200)}">${isN(r.vs200) ? pc(r.vs200 * 100, 1) : '—'}</td>
           <td>${esc((r.rating || '—').replace(/^\d+(\.\d+)?\s*-\s*/, ''))}</td><td>${s ? verdictChip(s.verdict) + ' <span class="muted">' + s.score + '</span>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>`;
     }).join('') || '<div class="card muted">No AI stock data available.</div>';
     $('#aibody').querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
