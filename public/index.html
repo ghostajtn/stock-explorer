@@ -192,8 +192,10 @@ setInterval(checkAlerts, 60000); setTimeout(checkAlerts, 4000);
 // star + alert controls on a stock's page
 let wlSym = null;
 function renderWlBar() {
-  const bar = $('#wlbar'); if (!bar || !wlSym) return;
-  const w = wl.find(wlSym), on = !!w;
+  if (!wlSym) return;
+  const w = wl.find(wlSym), on = !!w, hs = $('#hstar');
+  if (hs) { hs.textContent = on ? '★' : '☆'; hs.title = on ? 'Remove from my watchlist' : 'Add to my watchlist'; hs.onclick = () => { wl.toggle(wlSym); renderWlBar(); }; }
+  const bar = $('#wlbar'); if (!bar) return;          // the alert controls live on the "Technicals & Alerts" tab
   bar.innerHTML = `<button class="star" id="wlstar" title="${on ? 'Remove from my watchlist' : 'Add to my watchlist'}">${on ? '★' : '☆'}</button>
     <span class="muted">Alert me when price is</span> above <input id="alup" type="number" step="any" placeholder="$" value="${w?.above ?? ''}"> below <input id="aldn" type="number" step="any" placeholder="$" value="${w?.below ?? ''}">
     <button class="chip" id="alset">Set alert</button>${STATIC ? '<span class="muted">(alerts need the local app)</span>' : ''}`;
@@ -368,13 +370,13 @@ function sma(bars, n) {
   bars.forEach((b, i) => { sum += b.close; if (i >= n) sum -= bars[i - n].close; if (i >= n - 1) out.push({ time: b.time, value: sum / n }); });
   return out;
 }
-function priceChart(el, c) {
+function priceChart(el, c, withIndicators = false) {
   priceCharts.forEach((x) => x.remove()); priceCharts = [];
   if (!window.LightweightCharts || !c.candles || !c.candles.length) return lineChart(el, c.points, c.prevClose);
   const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n).trim();
   const bars = []; let last = -1;
   for (const b of c.candles) { const time = Math.floor(b.t / 1000); if (time > last) { bars.push({ time, open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }); last = time; } }
-  el.innerHTML = `<div class="toolbar" style="margin:0 0 8px"><button class="chip ${priceChartMode === 'candle' ? 'on' : ''}" data-m="candle">Candles</button><button class="chip ${priceChartMode === 'line' ? 'on' : ''}" data-m="line">Line</button><span class="muted" id="pcleg" style="font-size:12px"></span></div><div id="pcbox" style="height:380px"></div>${bars.length > 35 ? '<div id="rsibox" style="height:110px;margin-top:6px"></div><div id="macdbox" style="height:130px;margin-top:6px"></div>' : ''}`;
+  el.innerHTML = `<div class="toolbar" style="margin:0 0 8px"><button class="chip ${priceChartMode === 'candle' ? 'on' : ''}" data-m="candle">Candles</button><button class="chip ${priceChartMode === 'line' ? 'on' : ''}" data-m="line">Line</button><span class="muted" id="pcleg" style="font-size:12px"></span></div><div id="pcbox" style="height:380px"></div>${withIndicators && bars.length > 35 ? '<div id="rsibox" style="height:110px;margin-top:6px"></div><div id="macdbox" style="height:130px;margin-top:6px"></div>' : ''}`;
   const opts = () => ({
     autoSize: true,
     layout: { background: { color: 'transparent' }, textColor: v('--mute') },
@@ -395,7 +397,7 @@ function priceChart(el, c) {
     const d = sma(bars, n); if (d.length) chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: 'SMA' + n }).setData(d);
   });
   chart.timeScale().fitContent();
-  if (bars.length > 35) {                     // RSI + MACD panels, scrolled/zoomed together with the price chart
+  if (withIndicators && bars.length > 35) {   // RSI + MACD panels, scrolled/zoomed together with the price chart
     const closes = bars.map((b) => b.close), rs = rsi(closes), m = macd(closes), at = (arr) => bars.map((b, i) => arr[i] == null ? { time: b.time } : { time: b.time, value: arr[i] }); // empty points keep all panels on the same bar index
     const rc = LightweightCharts.createChart($('#rsibox', el), opts()), mc = LightweightCharts.createChart($('#macdbox', el), opts());
     priceCharts.push(rc, mc);
@@ -416,7 +418,7 @@ function priceChart(el, c) {
     const b = p.time && byTime.get(p.time);
     leg.textContent = b ? `${new Date(b.time * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}   O ${nf(b.open)}  H ${nf(b.high)}  L ${nf(b.low)}  C ${nf(b.close)}  Vol ${nf(b.volume / 1e6, 1)}M` : '';
   });
-  el.querySelectorAll('[data-m]').forEach((btn) => btn.onclick = () => { priceChartMode = btn.dataset.m; priceChart(el, c); });
+  el.querySelectorAll('[data-m]').forEach((btn) => btn.onclick = () => { priceChartMode = btn.dataset.m; priceChart(el, c, withIndicators); });
 }
 function barChart(el, labels, series) {
   const W = 900, H = 240, P = { l: 56, r: 8, t: 10, b: 26 };
@@ -436,7 +438,7 @@ function barChart(el, labels, series) {
 }
 
 // ---------- detail ----------
-const TABS = ['Overview', 'Financials', 'Earnings', 'Deals & News', 'Analysts', 'Ownership', 'About'];
+const TABS = ['Overview', 'Financials', 'Earnings', 'Deals & News', 'Analysts', 'Technicals & Alerts', 'Ownership', 'About'];
 async function detailView(sym) {
   app.innerHTML = `<div class="loading">Loading ${esc(sym)}…</div>`;
   let s, pipe;
@@ -444,10 +446,9 @@ async function detailView(sym) {
   catch (e) { app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back to top 50</a></div>`; return; }
   const p = s.price || {}, tab = sessionStorage.getItem('tab') || 'Overview';
   app.innerHTML = `<a href="#/">← Top 50</a>
-    <div class="hdr" style="margin-top:8px"><h2>${esc(p.shortName || sym)} <span class="muted" style="font-size:16px">${esc(sym)} · ${esc(p.exchangeName || '')}</span></h2></div>
+    <div class="hdr" style="margin-top:8px"><h2>${esc(p.shortName || sym)} <span class="muted" style="font-size:16px">${esc(sym)} · ${esc(p.exchangeName || '')}</span> <button class="star" id="hstar"></button></h2></div>
     <div class="hdr"><span class="price">${usd(p.regularMarketPrice)}</span><span class="${cls(p.regularMarketChangePercent)}" style="font-size:16px">${pc((p.regularMarketChangePercent ?? NaN) * 100)}</span>
       <span class="muted">Mkt cap ${big(p.marketCap)}</span><span class="muted">${esc(s.assetProfile?.sector || '')}${s.assetProfile?.industry ? ' · ' + esc(s.assetProfile.industry) : ''}</span></div>
-    <div class="alerts" id="wlbar"></div>
     <div class="tabs">${TABS.map((t) => `<div class="tab ${t === tab ? 'on' : ''}" data-t="${t}">${t}</div>`).join('')}</div>
     <div id="pane"></div>`;
   wlSym = sym.toUpperCase(); renderWlBar();
@@ -581,6 +582,28 @@ const VIEWS = {
         ${[[lo, 'Low'], [mean, 'Mean'], [hi, 'High'], [px, 'Price']].filter(([v]) => isN(v)).map(([v, l], i) => `<div style="position:absolute;left:${pos(v)};top:${l === 'Price' ? 36 : 0}px;transform:translateX(-50%);text-align:center;font-size:12px;white-space:nowrap"><b>${nf(v, 0)}</b><br><span class="muted">${l}</span></div>`).join('')}</div></div></div>
       <div class="card scroll"><h3>Recent rating changes</h3><table><thead><tr><th class="l">Date</th><th class="l">Firm</th><th class="l">Action</th><th class="l">From → To</th></tr></thead><tbody>
       ${ud.slice(0, 15).map((u) => `<tr><td class="l">${date(u.epochGradeDate)}</td><td class="l">${esc(u.firm)}</td><td class="l">${esc(u.action)}</td><td class="l">${esc(u.fromGrade || '—')} → <b>${esc(u.toGrade)}</b></td></tr>`).join('') || '<tr><td class="l muted">None</td></tr>'}</tbody></table></div>`;
+  },
+
+  'Technicals & Alerts'(el, s) {
+    const SENT = { pos: ['▲', 'Positive'], neg: ['▼', 'Negative'], neu: ['•', 'Neutral'] };
+    const count = (k) => s.news.filter((n) => (n.sentiment || 'neu') === k).length, tot = s.news.length || 1;
+    const row = (n) => `<li><span class="sent ${n.sentiment}" title="${SENT[n.sentiment || 'neu'][1]} wording">${SENT[n.sentiment || 'neu'][0]}</span><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="muted">· ${esc(n.source || '')} · ${n.ts ? ago(n.ts) : ''}</span></li>`;
+    const lists = ['neg', 'pos'].map((k) => [k, s.news.filter((n) => n.sentiment === k).slice(0, 6)]).filter(([, l]) => l.length);
+    el.innerHTML = `<div class="card"><h3>★ Watchlist &amp; price alerts</h3><div class="alerts" id="wlbar"></div>
+        <div class="note">Alerts are saved in this browser and checked every minute while the app is open.</div></div>
+      <div class="card"><div class="toolbar" id="rng">${['1mo', '6mo', '1y', '5y', 'max'].map((r) => `<button class="chip ${r === '1y' ? 'on' : ''}" data-r="${r}">${r.toUpperCase()}</button>`).join('')}</div><div id="ch" style="min-height:280px"></div>
+        <div class="note">Top: price with 50/200-day averages and volume. Middle: RSI (14), above 70 is overbought and below 30 oversold. Bottom: MACD (12, 26, 9).</div></div>
+      <div class="card"><h3>News sentiment (wording of ${s.news.length} headlines)</h3>
+        <div class="pill" style="margin-bottom:10px">${[['pos', '#1a7f37'], ['neu', '#6e7781'], ['neg', '#cf222e']].map(([k, c]) => count(k) ? `<div style="flex:${count(k)};background:${c}" title="${SENT[k][1]}: ${count(k)}">${count(k)}</div>` : '').join('')}</div>
+        <div class="muted" style="font-size:12px;margin-bottom:8px">${Math.round(count('pos') / tot * 100)}% positive · ${Math.round(count('neg') / tot * 100)}% negative. Scores the words in a headline, not how the stock will react.</div>
+        ${lists.map(([k, l]) => `<h3 style="margin-top:12px">${k === 'neg' ? 'Most negative' : 'Most positive'}</h3><ul class="news">${l.map(row).join('')}</ul>`).join('') || '<span class="muted">No clearly positive or negative headlines.</span>'}</div>`;
+    renderWlBar();
+    const draw = async (r) => {
+      const ch = $('#ch', el); ch.innerHTML = '<div class="loading">Loading chart…</div>';
+      try { const c = await api(`/api/chart/${s.symbol}?range=${r}`); priceChart(ch, c, true); } catch (e) { ch.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+    };
+    $('#rng', el).querySelectorAll('button').forEach((b) => b.onclick = () => { $('#rng', el).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(b.dataset.r); });
+    draw('1y');
   },
 
   Ownership(el, s) {
