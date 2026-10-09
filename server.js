@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyHeadline } from './classify.js';
+import { sentimentLabel } from './sentiment.js';
 
 const PORT = process.env.PORT || 3456;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -154,7 +155,7 @@ async function news(sym) {
   return items
     .filter((n) => n.title && !seen.has(n.title.toLowerCase()) && seen.add(n.title.toLowerCase()))
     .sort((a, b) => b.ts - a.ts)
-    .map((n) => ({ ...n, tag: classifyHeadline(n.title) }));
+    .map((n) => ({ ...n, tag: classifyHeadline(n.title), sentiment: sentimentLabel(n.title) }));
 }
 
 const stock = (sym) => cached('stock:' + sym, 5 * 60e3, async () => {
@@ -183,9 +184,12 @@ const chart = (sym, range) => cached(`chart:${sym}:${range}`, 60e3, async () => 
   const j = await yahoo(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${rg}&interval=${iv}`, { crumb: false });
   const r = j.chart?.result?.[0];
   if (!r) throw new Error('No chart data');
-  const closes = r.indicators.quote[0].close;
+  const q = r.indicators.quote[0], closes = q.close;
   const pts = r.timestamp.map((t, i) => [t * 1000, closes[i]]).filter((p) => p[1] != null);
-  return { points: pts, prevClose: r.meta.chartPreviousClose };
+  // OHLCV bars for the candlestick chart (bars with a missing value are skipped).
+  const candles = r.timestamp.map((t, i) => ({ t: t * 1000, o: q.open[i], h: q.high[i], l: q.low[i], c: closes[i], v: q.volume[i] }))
+    .filter((b) => b.o != null && b.h != null && b.l != null && b.c != null);
+  return { points: pts, candles, prevClose: r.meta.chartPreviousClose };
 });
 
 const search = (q) => cached('search:' + q, 5 * 60e3, async () => {
@@ -208,6 +212,12 @@ http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/api/top50') return json(res, 200, await top50());
     if (u.pathname === '/api/search') return json(res, 200, await search(u.searchParams.get('q') || ''));
+    if (u.pathname === '/api/quotes') {
+      // Live prices for the browser-side watchlist/alerts: ?symbols=AAPL,MSFT (max 50).
+      const syms = (u.searchParams.get('symbols') || '').toUpperCase().split(',').filter((s) => /^[\w.\-^=]{1,12}$/.test(s)).slice(0, 50);
+      const qs = syms.length ? await cached('quotes:' + syms.join(','), 30e3, () => getQuotes(syms)) : [];
+      return json(res, 200, qs.map((q) => ({ symbol: q.symbol, name: q.shortName || q.longName, price: q.regularMarketPrice, changePct: q.regularMarketChangePercent })));
+    }
     let m;
     if ((m = u.pathname.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
       // Hand-curated forward deals/guidance (edit pipeline.json to add tickers).
