@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyHeadline } from './classify.js';
 import { sentimentLabel } from './sentiment.js';
 import { computeSignal } from './signal.js';
+import { runBacktest } from './backtest.js';
 
 const PORT = process.env.PORT || 3456;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -181,7 +182,7 @@ const stock = (sym) => cached('stock:' + sym, 5 * 60e3, async () => {
   };
 });
 
-const RANGES = { '1d': ['1d', '5m'], '5d': ['5d', '15m'], '1mo': ['1mo', '1d'], '6mo': ['6mo', '1d'], '1y': ['1y', '1d'], '5y': ['5y', '1wk'], max: ['max', '1mo'] };
+const RANGES = { '1d': ['1d', '5m'], '5d': ['5d', '15m'], '1mo': ['1mo', '1d'], '6mo': ['6mo', '1d'], '1y': ['1y', '1d'], '5y': ['5y', '1wk'], '5yd': ['5y', '1d'], max: ['max', '1mo'] };
 const chart = (sym, range) => cached(`chart:${sym}:${range}`, 60e3, async () => {
   const [rg, iv] = RANGES[range] || RANGES['1y'];
   const j = await yahoo(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${rg}&interval=${iv}`, { crumb: false });
@@ -226,6 +227,10 @@ http.createServer(async (req, res) => {
       const sym = m[1].toUpperCase(), s = await stock(sym);
       const c = await chart(sym, '1y').catch(() => null);
       return json(res, 200, computeSignal(s, c?.candles?.map((b) => b.c)));
+    }
+    if ((m = u.pathname.match(/^\/api\/backtest\/([\w.\-^=]+)$/))) {
+      const c = await chart(m[1].toUpperCase(), '5yd');
+      return json(res, 200, { symbol: m[1].toUpperCase(), result: runBacktest(c.candles.map((b) => ({ t: b.t, c: b.c }))) });
     }
     if ((m = u.pathname.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
       // Hand-curated forward deals/guidance (edit pipeline.json to add tickers).

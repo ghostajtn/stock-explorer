@@ -212,6 +212,37 @@ async function checkSignals() {
 }
 setInterval(checkSignals, 300e3); setTimeout(checkSignals, 8000);
 
+// Backtest of the price-based part of the rule (see backtest.js). hz[h].signal / .all = { n, sum, wins }
+const btTable = (hz) => {
+  const cell = (x) => x.n ? { avg: x.sum / x.n, win: x.wins / x.n, n: x.n } : null, names = { 21: '~1 month', 63: '~3 months', 126: '~6 months' };
+  return `<div class="scroll"><table><thead><tr><th class="l">Held for</th><th>After setup days: avg return</th><th>Win rate</th><th>Samples</th><th>Any day (baseline): avg</th><th>Win rate</th><th>Difference</th></tr></thead><tbody>${[21, 63, 126].map((h) => {
+    const s = cell(hz[h].signal), a = cell(hz[h].all); if (!s || !a) return `<tr><td class="l">${names[h]}</td><td colspan="6" class="muted">Not enough data</td></tr>`;
+    const d = (s.avg - a.avg) * 100;
+    return `<tr><td class="l">${names[h]}</td><td class="${cls(s.avg)}">${pc(s.avg * 100, 1)}</td><td>${Math.round(s.win * 100)}%</td><td class="muted">${s.n.toLocaleString()}</td><td class="${cls(a.avg)}">${pc(a.avg * 100, 1)}</td><td>${Math.round(a.win * 100)}%</td><td class="${cls(d)}"><b>${pc(d, 1)}</b></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+};
+const BT_NOTE = `<p class="note">Tests only the <b>price-based</b> part of the rule (above the 200-day average, 50-day above 200-day, RSI 40–65, within 20% of the 200-day) over the last 5 years of daily prices. Analyst ratings and news have no free point-in-time history, so they can't be tested. The stocks are today's biggest companies, which are mostly past winners (survivorship bias), so baselines look better than they would have in real time. Ignores trading costs and taxes, and nearby days overlap, so treat it as indicative only. Past results don't predict future returns. Not advice.</p>`;
+
+async function backtestAll() {
+  const box = $('#btall'), btn = $('#btallbtn'); if (!box) return;
+  const syms = [...new Set([...(home.watch || []), ...home.rows].map((r) => r.symbol))], pooled = {}; let i = 0, done = 0, setups = 0;
+  for (const h of [21, 63, 126]) pooled[h] = { signal: { n: 0, sum: 0, wins: 0 }, all: { n: 0, sum: 0, wins: 0 } };
+  btn.disabled = true;
+  const worker = async () => {
+    while (i < syms.length) {
+      const sym = syms[i++];
+      try {
+        const r = (await api('/api/backtest/' + encodeURIComponent(sym))).result;
+        if (r) { done++; setups += r.entryCount; for (const h of [21, 63, 126]) for (const k of ['signal', 'all']) { const x = r.horizons[h][k], p = pooled[h][k]; p.n += x.n; p.sum += x.sum; p.wins += x.wins; } }
+      } catch { /* skip stocks without enough history */ }
+      box.innerHTML = `<div class="muted">Backtesting… ${i} of ${syms.length}</div>`;
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  btn.disabled = false;
+  box.innerHTML = `<div class="muted" style="margin:6px 0">${done} stocks, ${setups.toLocaleString()} separate setups over about 5 years, all pooled.</div>${btTable(pooled)}${BT_NOTE}`;
+}
+
 // Scan the top 50 + server watchlist for stocks that currently pass the Buy-setup rule (4 requests at a time).
 async function scanSignals() {
   const box = $('#scan'), btn = $('#scanbtn'); if (!box) return;
@@ -320,7 +351,7 @@ function renderHome() {
       <span class="muted" id="count"></span>
     </div>
     <div class="card scroll"><h3>★ My watchlist</h3><div id="mywl"></div></div>
-    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan top 50 for Buy setups</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div></div>`}
+    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan top 50 for Buy setups</button><button class="chip" id="btallbtn">Backtest the rule on all 50 (5 years)</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div><div id="btall"></div></div>`}
     <div class="card scroll" style="padding:0"><table id="tbl"></table></div>
     <p class="note">Top 50 ranked live by market cap from a ~100-company candidate list. Data: Yahoo Finance (delayed/unofficial). Not investment advice. Click a row for full detail.</p>`;
   $('#flt').oninput = (e) => { home.filter = e.target.value; renderTable(); };
@@ -329,7 +360,7 @@ function renderHome() {
     b.classList.toggle('on'); renderTable();
   });
   renderTable(); renderMyWl();
-  if ($('#scanbtn')) $('#scanbtn').onclick = scanSignals;
+  if ($('#scanbtn')) { $('#scanbtn').onclick = scanSignals; $('#btallbtn').onclick = backtestAll; }
 }
 function renderTable() {
   const { key, dir } = home.sort, f = home.filter.toLowerCase();
@@ -654,7 +685,15 @@ const VIEWS = {
       ${groups.map((g) => `<div class="card"><h3>${g}</h3>${sig.checks.filter((c) => c.group === g).map((c) =>
         `<div class="check"><b style="color:${c.pass === true ? 'var(--up)' : c.pass === false ? 'var(--down)' : 'var(--mute)'}">${c.pass === true ? '✔' : c.pass === false ? '✖' : '?'}</b><div>${esc(c.label)} <span class="muted">(${c.weight} pts)</span><div class="muted" style="font-size:12px">${esc(c.detail)}</div></div></div>`).join('')}</div>`).join('')}
       <p class="note">This is an automatic checklist built from public data (Yahoo Finance) and headline wording. It cannot know your goals, risk or tax situation, and past patterns don't guarantee future results. It is information, not investment advice, and the app never buys or sells anything. Do your own research before acting.</p>`;
-    $('#sigalert', el).onchange = (e) => { const l = wl.get(); let x = l.find((y) => y.s === s.symbol); if (!x) l.push(x = { s: s.symbol }); x.sig = e.target.checked; x.lastVerdict = sig.verdict; wl.set(l); try { if (e.target.checked && window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch {} renderWlBar(); };
+    el.insertAdjacentHTML('beforeend', '<div class="card" id="bt"><h3>Backtest: how the price-based rule did on this stock (5 years)</h3><div class="loading">Running…</div></div>');
+    api('/api/backtest/' + encodeURIComponent(s.symbol)).then(({ result: r }) => {
+      const bt = $('#bt', el); if (!bt) return;
+      if (!r) { bt.innerHTML += '<div class="muted">Not enough price history to backtest.</div>'; $('.loading', bt)?.remove(); return; }
+      const ent = r.entries.map((x) => `<tr><td class="l">${new Date(x.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td><td>${usd(x.price)}</td><td class="${cls(x.r63)}">${isN(x.r63) ? pc(x.r63 * 100, 1) : '—'}</td><td class="${cls(x.r126)}">${isN(x.r126) ? pc(x.r126 * 100, 1) : '—'}</td></tr>`).join('');
+      bt.innerHTML = `<h3>Backtest: how the price-based rule did on this stock (5 years)</h3><div class="muted" style="margin-bottom:8px">${r.entryCount} separate setups, ${r.setupDays} of ${r.days} days met the price rules${r.nowInSetup ? ' (including today)' : ''}.</div>${btTable(r.horizons)}
+        ${ent ? `<h3 style="margin-top:14px">Most recent setups</h3><div class="scroll"><table><thead><tr><th class="l">Setup began</th><th>Price</th><th>After ~3 months</th><th>After ~6 months</th></tr></thead><tbody>${ent}</tbody></table></div>` : ''}${BT_NOTE}`;
+    }).catch((e) => { const bt = $('#bt', el); if (bt) bt.innerHTML = `<h3>Backtest</h3><div class="muted">${STATIC ? 'Needs the local app.' : esc(e.message)}</div>`; });
+    $('#sigalert', el).onchange =(e) => { const l = wl.get(); let x = l.find((y) => y.s === s.symbol); if (!x) l.push(x = { s: s.symbol }); x.sig = e.target.checked; x.lastVerdict = sig.verdict; wl.set(l); try { if (e.target.checked && window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch {} renderWlBar(); };
   },
 
   'Technicals & Alerts'(el, s) {
