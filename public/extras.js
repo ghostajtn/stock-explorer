@@ -153,14 +153,14 @@ async function labPage(el) {
     (STATIC ? '<div class="card muted">The lab needs the local app (it runs the backtests on the server).</div>' : '<div class="toolbar"><button class="chip" id="labgo">Run the lab (takes about 30 seconds)</button></div><div id="labout"></div>') + NOT_ADVICE;
   if (STATIC) return;
   $('#labgo').onclick = async () => {
-    const btn = $('#labgo'), out = $('#labout'), syms = [...new Set((await ensureHome()).map((r) => r.symbol))], pooled = {}; let i = 0, done = 0;
-    btn.disabled = true;
+    const btn = $('#labgo'); btn.disabled = true;
+    const out = $('#labout'), syms = [...new Set((await ensureHome()).map((r) => r.symbol))], pooled = {}, now = {}; let i = 0, done = 0;
     const worker = async () => {
       while (i < syms.length) {
         const sym = syms[i++];
         try {
           const { presets } = await api(`/api/backtest/${encodeURIComponent(sym)}?all=1`);
-          if (presets) { done++; for (const [k, r] of Object.entries(presets)) { const P = pooled[k] ||= { name: r.name, about: r.about, h: {} };
+          if (presets) { done++; now[sym] = Object.fromEntries(Object.entries(presets).map(([k, r]) => [k, r.nowInSetup])); for (const [k, r] of Object.entries(presets)) { const P = pooled[k] ||= { name: r.name, about: r.about, h: {} };
             for (const h of [21, 63, 126]) { const t = P.h[h] ||= { signal: { n: 0, sum: 0, wins: 0 }, all: { n: 0, sum: 0, wins: 0 } }; for (const w of ['signal', 'all']) { const x = r.horizons[h][w]; t[w].n += x.n; t[w].sum += x.sum; t[w].wins += x.wins; } } } }
         } catch { /* skip */ }
         out.innerHTML = `<div class="muted">Running… ${i} of ${syms.length}</div>`;
@@ -168,11 +168,63 @@ async function labPage(el) {
     };
     await Promise.all([worker(), worker(), worker(), worker()]); btn.disabled = false;
     const avg = (x) => x.n ? x.sum / x.n : null, rows = Object.entries(pooled).map(([k, P]) => { const s3 = P.h[63].signal, a3 = P.h[63].all, s6 = P.h[126].signal, a6 = P.h[126].all;
-      return { P, d3: avg(s3) - avg(a3), d6: avg(s6) - avg(a6), a3: avg(s3), a6: avg(s6), w3: s3.n ? s3.wins / s3.n : null, n: s3.n, base3: avg(a3), base6: avg(a6) }; }).sort((a, b) => b.d3 - a.d3);
+      return { k, P, d3: avg(s3) - avg(a3), d6: avg(s6) - avg(a6), a3: avg(s3), a6: avg(s6), w3: s3.n ? s3.wins / s3.n : null, n: s3.n, base3: avg(a3), base6: avg(a6) }; }).sort((a, b) => b.d3 - a.d3);
     out.innerHTML = `<div class="muted" style="margin:6px 0">${done} stocks tested. Sorted by the 3-month difference vs buying on any day.</div><div class="card scroll"><table><thead><tr><th class="l">Rule</th><th class="l">What it requires</th><th>Avg after 3 mo</th><th>vs any day</th><th>Win rate</th><th>Avg after 6 mo</th><th>vs any day</th><th>Samples</th></tr></thead><tbody>${rows.map((r) =>
       `<tr><td class="l"><b>${esc(r.P.name)}</b></td><td class="l muted" style="white-space:normal;max-width:300px">${esc(r.P.about)}</td><td class="${cls(r.a3)}">${pc(r.a3 * 100, 1)}</td><td class="${cls(r.d3)}"><b>${pc(r.d3 * 100, 1)}</b></td><td>${r.w3 == null ? '—' : Math.round(r.w3 * 100) + '%'}</td><td class="${cls(r.a6)}">${pc(r.a6 * 100, 1)}</td><td class="${cls(r.d6)}"><b>${pc(r.d6 * 100, 1)}</b></td><td class="muted">${r.n.toLocaleString()}</td></tr>`).join('')}</tbody></table></div>
-      <p class="note"><b>Read this carefully.</b> Picking the best of six rules after seeing the results is "data mining": the winner may just be lucky and can fail going forward. These are today's biggest companies (survivorship bias), samples on nearby days overlap, costs and taxes are ignored, and analyst/news rules can't be tested. Past results don't predict future returns.</p>`;
+      <p class="note"><b>Read this carefully.</b> Picking the best of six rules after seeing the results is "data mining": the winner may just be lucky and can fail going forward. These are today's biggest companies (survivorship bias), samples on nearby days overlap, costs and taxes are ignored, and analyst/news rules can't be tested. Past results don't predict future returns.</p>
+      <div id="matches"></div>`;
+    renderMatches($('#matches'), rows, now);
   };
+}
+
+// What could move a stock: bullish and bearish things pulled from its news, analysts, earnings and short interest.
+function catalysts(s) {
+  const bull = [], bear = [], news = s.news || [], px = s.price?.regularMarketPrice, fd = s.financialData || {}, ks = s.defaultKeyStatistics || {}, now = Date.now();
+  const link = (n) => `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="muted">· ${esc(n.source || '')}${n.ts ? ' · ' + ago(n.ts) : ''}</span>`;
+  news.filter((n) => n.sentiment === 'pos').slice(0, 2).forEach((n) => bull.push(link(n)));
+  news.filter((n) => n.sentiment === 'neg').slice(0, 2).forEach((n) => bear.push(link(n)));
+  const acts = (s.upgradeDowngradeHistory?.history || []).filter((h) => h.epochGradeDate && now - h.epochGradeDate * 1000 <= 30 * 864e5);
+  const ups = acts.filter((h) => h.action === 'up'), downs = acts.filter((h) => h.action === 'down');
+  if (ups.length) bull.push(`${ups.length} analyst upgrade${ups.length > 1 ? 's' : ''} in the last 30 days (${ups.slice(0, 2).map((h) => esc(h.firm)).join(', ')})`);
+  if (downs.length) bear.push(`${downs.length} analyst downgrade${downs.length > 1 ? 's' : ''} in the last 30 days (${downs.slice(0, 2).map((h) => esc(h.firm)).join(', ')})`);
+  const up = isN(fd.targetMeanPrice) && isN(px) ? fd.targetMeanPrice / px - 1 : null;
+  if (isN(up) && up >= 0.15) bull.push(`Analysts' average target is ${pc(up * 100, 0)} above the price`);
+  if (isN(up) && up < 0) bear.push(`Price is already above analysts' average target (${pc(up * 100, 0)})`);
+  const eg = isN(ks.forwardEps) && ks.trailingEps > 0 ? ks.forwardEps / ks.trailingEps - 1 : null;
+  if (isN(eg) && eg >= 0.10) bull.push(`Earnings expected to grow ${pc(eg * 100, 0)} (forward vs trailing EPS)`);
+  if (isN(eg) && eg < 0) bear.push(`Earnings expected to shrink ${pc(eg * 100, 0)} (forward vs trailing EPS)`);
+  if (isN(fd.revenueGrowth) && fd.revenueGrowth >= 0.10) bull.push(`Revenue growing ${pct(fd.revenueGrowth)}`);
+  if (isN(fd.revenueGrowth) && fd.revenueGrowth < 0) bear.push(`Revenue shrinking ${pct(fd.revenueGrowth)}`);
+  const ets = (s.calendarEvents?.earnings?.earningsDate || [])[0], d = ets ? Math.ceil((ets * 1000 - now) / 864e5) : null;
+  if (isN(d) && d >= 0 && d <= 14) bear.push(`Earnings in ${d} day${d === 1 ? '' : 's'}: results can move it sharply either way`);
+  if (isN(ks.shortPercentOfFloat) && ks.shortPercentOfFloat > 0.10) bear.push(`${pct(ks.shortPercentOfFloat)} of the float is sold short`);
+  const np = s.netSharePurchaseActivity || {};
+  if (isN(np.netInfoShares) && np.netInfoShares > 0 && (np.buyInfoCount ?? 0) >= 2) bull.push(`Insiders net buyers (${np.buyInfoCount} buys in 6 months)`);
+  return { bull, bear };
+}
+
+// Stocks that match a rule *today*, ranked by their Buy-setup score, each with what could move it.
+async function renderMatches(box, rows, now) {
+  const draw = async (key) => {
+    const P = rows.find((r) => r.k === key), hits = Object.keys(now).filter((sym) => now[sym][key]);
+    const body = $('#mbody', box); body.innerHTML = `<div class="loading">Checking ${hits.length} stocks…</div>`;
+    const info = (await Promise.all(hits.map(async (sym) => {
+      const [g, s] = await Promise.allSettled([getSignal(sym), api('/api/stock/' + encodeURIComponent(sym))]);
+      return g.value && s.value ? { sym, g: g.value, s: s.value } : null;
+    }))).filter(Boolean).sort((a, b) => b.g.score - a.g.score);
+    if (box.dataset.key !== key) return;                                   // user switched rules while loading
+    body.innerHTML = `<div class="muted" style="margin-bottom:8px">${info.length} of the top stocks match <b>${esc(P.P.name)}</b> today (${esc(P.P.about)}). Ranked by Buy-setup score, which blends analysts, news, trend and fundamentals.</div>` +
+      (info.map(({ sym, g, s }) => { const c = catalysts(s), p = s.price || {};
+        return `<div class="card"><div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap"><a href="#/${esc(sym)}"><b style="font-size:18px">${esc(sym)}</b></a><span class="muted">${esc(p.shortName || '')}</span><span>${usd(p.regularMarketPrice)}</span><span class="${cls(p.regularMarketChangePercent)}">${pc((p.regularMarketChangePercent ?? NaN) * 100)}</span>${verdictChip(g.verdict)}<span class="muted">score ${g.score}/100</span>${earnWarn(s)}</div>
+          <div class="two" style="margin-top:10px"><div><h3 style="color:var(--up)">▲ Could push it up</h3>${c.bull.length ? `<ul class="news">${c.bull.map((t) => `<li>${t}</li>`).join('')}</ul>` : '<span class="muted">Nothing obvious</span>'}</div>
+          <div><h3 style="color:var(--down)">▼ Could push it down</h3>${c.bear.length ? `<ul class="news">${c.bear.map((t) => `<li>${t}</li>`).join('')}</ul>` : '<span class="muted">Nothing obvious</span>'}</div></div></div>`; }).join('') || '<div class="card muted">No stocks match this rule right now.</div>');
+  };
+  box.innerHTML = `<h2 style="margin:18px 0 4px">Matching right now</h2><div class="muted" style="margin-bottom:10px">Pick a rule to see which stocks fit it today, and what could move each one. The best-ranked rule is selected first.</div>
+    <div class="toolbar">${rows.map((r, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-key="${r.k}">${esc(r.P.name)}</button>`).join('')}</div><div id="mbody"></div>
+    <p class="note">A rule that worked in the past is not a promise: a stock matching it today is a candidate to research, not a recommendation. Headlines are scored by their wording only and can be wrong or already priced in. Information only, not investment advice.</p>`;
+  const pick = (key) => { box.dataset.key = key; box.querySelectorAll('[data-key]').forEach((b) => b.classList.toggle('on', b.dataset.key === key)); draw(key); };
+  box.querySelectorAll('[data-key]').forEach((b) => b.onclick = () => pick(b.dataset.key));
+  pick(rows[0].k);
 }
 
 // ---------- dividends ----------
