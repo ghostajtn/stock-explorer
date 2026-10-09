@@ -1,4 +1,30 @@
 {
+  "SPCX": {
+    "asOf": "First post-IPO results, Aug 4, 2026 (from news coverage - Yahoo Finance/Reuters/CNBC summaries, not read from the filing itself)",
+    "guidance": [
+      { "label": "Q2 2026 revenue", "value": "$7.8B (+92% YoY) vs ~$6.9B expected" },
+      { "label": "Q2 adjusted EBITDA", "value": "$3.5B (+191% YoY from $1.2B)" },
+      { "label": "Q2 net loss / EPS", "value": "$541M loss (improved by $467M); GAAP EPS -$0.09 vs -$0.23 expected" },
+      { "label": "Connectivity segment (Starlink)", "value": "Revenue +66%, operating income +79%; subscriber base doubled" },
+      { "label": "Capex", "value": "About $18.4B reported for the period; management warned spending would stay near that level (per a news report; verify in the filing)" },
+      { "label": "Formal full-year guidance", "value": "Not confirmed in the coverage I read" }
+    ],
+    "deals": [
+      { "partner": "Cloud Services Agreements (AI compute customers)", "what": "Multiple agreements for AI compute capacity; management credits them for the margin expansion in the quarter", "size": "$14.1B of contracted sales", "timing": "Multi-year" },
+      { "partner": "US government (Starshield)", "what": "Awarded multi-year US government contracts for Starshield satellite services", "size": "More than $6B", "timing": "Multi-year" },
+      { "partner": "Starlink Enterprise and Government", "what": "Enterprise and government demand continues to drive Connectivity growth", "size": "Not disclosed", "timing": "Ongoing" },
+      { "partner": "xAI (merger, Feb 2026)", "what": "Merger with Elon Musk's AI lab added an AI reporting segment (X and xAI); the AI business is the main source of losses and capex", "size": "Not covered here", "timing": "Completed Feb 2026" },
+      { "partner": "Starship", "what": "Two Starship V3 flight tests completed in the last 90 days, aimed at full and rapid reusability", "size": "Heavy ongoing investment", "timing": "More tests expected" },
+      { "partner": "Public markets (IPO, June 2026)", "what": "Record IPO priced at $135 a share at a valuation above $1.7T", "size": "Largest IPO on record per press reports", "timing": "June 2026" }
+    ],
+    "risks": [
+      "Capex: roughly $18B in a period, driven by AI infrastructure, while the company still reports a net loss",
+      "Insider lock-up expirations ahead could add selling pressure (shares fell ~5% after the report on this and capex concerns)",
+      "The AI segment (X/xAI) lost far more than it earned in 2025 and is bundled with the profitable Starlink business",
+      "Valuation: priced for very high growth as a single instrument across launch, Starlink and AI",
+      "Key-person and governance concentration around Elon Musk"
+    ]
+  },
   "MRNA": {
     "asOf": "Q2 2026 results release, Jul 31, 2026 (company press release; check later news for events after this date)",
     "guidance": [
