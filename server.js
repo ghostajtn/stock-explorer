@@ -116,6 +116,7 @@ const top50 = () => cached('top50', 60e3, async () => {
       forwardPE: q.forwardPE ?? null,
       eps: q.epsTrailingTwelveMonths ?? null,
       epsForward: q.epsForward ?? null,
+      epsYear: q.epsCurrentYear ?? null,
       pb: q.priceToBook ?? null,
       divYield: q.trailingAnnualDividendYield ?? null,
       low52: q.fiftyTwoWeekLow,

@@ -35,6 +35,8 @@ th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px sol
 th:first-child,td:first-child,th.l,td.l{text-align:left}
 th{font-size:12px;color:var(--mute);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
 th.sorted{color:var(--accent)}
+#tbl td:nth-child(2),#tbl th:nth-child(2){position:sticky;left:0;z-index:1;background:var(--panel)}   /* keep the company visible while scrolling sideways */
+#tbl tr.watch td:nth-child(2){background:var(--panel2)}#tbl tr.row:hover td:nth-child(2){background:var(--panel2)}
 tbody tr.row{cursor:pointer}tbody tr.row:hover{background:var(--panel2)}
 tbody tr.watch{background:var(--panel2);box-shadow:inset 3px 0 0 var(--warn)}
 .sym{font-weight:700}.nm{color:var(--mute);font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;display:block}
@@ -339,7 +341,7 @@ route();
 const home = { rows: [], sort: { key: 'marketCap', dir: -1 }, filter: '', chips: new Set() };
 const COLS = [
   ['rank', '#'], ['symbol', 'Company', 'l'], ['price', 'Price'], ['changePct', '1D'], ['marketCap', 'Mkt cap'],
-  ['pe', 'P/E (TTM)'], ['forwardPE', 'Fwd P/E'], ['eps', 'EPS TTM'], ['epsForward', 'EPS fwd'], ['epsGrowth', 'Fwd EPS Δ'],
+  ['eps', 'EPS TTM'], ['epsYear', 'EPS this yr (est)'], ['epsForward', 'EPS fwd'], ['epsGrowth', 'Fwd EPS Δ'], ['pe', 'P/E (TTM)'], ['forwardPE', 'Fwd P/E'],
   ['pb', 'P/B'], ['divYield', 'Div yld'], ['range', '52-wk range'], ['vs50', 'vs 50-day'], ['vs200', 'vs 200-day'], ['earningsTs', 'Next earnings'], ['rating', 'Analysts'],
 ];
 const CHIPS = {
@@ -411,8 +413,8 @@ function renderTable() {
     <td class="${r.watch ? '' : 'muted'}" ${r.watch ? 'style="color:var(--warn)" title="Watchlist"' : ''}>${r.rank}</td>
     <td class="l"><span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name)}</span></td>
     <td>${nf(r.price)}</td><td class="${cls(r.changePct)}">${pc(r.changePct)}</td><td>${big(r.marketCap)}</td>
+    <td class="${cls(r.eps)}">${nf(r.eps)}</td><td>${nf(r.epsYear)}</td><td>${nf(r.epsForward)}</td><td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td>
     <td class="${peCls(r.pe)}">${r.pe > 0 ? nf(r.pe, 1) : 'n/m'}</td><td class="${peCls(r.forwardPE)}" ${r.forwardPE <= 0 ? 'title="Negative expected earnings"' : ''}>${r.forwardPE > 0 ? nf(r.forwardPE, 1) : 'n/m'}</td>
-    <td>${nf(r.eps)}</td><td>${nf(r.epsForward)}</td><td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td>
     <td>${nf(r.pb, 1)}</td><td>${isN(r.divYield) && r.divYield ? pct(r.divYield) : '—'}</td>
     <td><span class="bar" title="${nf(r.low52)} – ${nf(r.high52)}">${isN(r.range) ? `<i style="left:calc(${Math.min(1, Math.max(0, r.range)) * 100}% - 1px)"></i>` : ''}</span></td>
     <td class="${cls(r.vs50)}" title="50-day avg ${nf(r.ma50)}">${isN(r.vs50) ? pc(r.vs50 * 100, 1) : '—'}</td><td class="${cls(r.vs200)}" title="200-day avg ${nf(r.ma200)}">${isN(r.vs200) ? pc(r.vs200 * 100, 1) : '—'}</td>
