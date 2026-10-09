@@ -97,6 +97,8 @@ const top50 = () => cached('top50', 60e3, async () => {
       divYield: q.trailingAnnualDividendYield ?? null,
       low52: q.fiftyTwoWeekLow,
       high52: q.fiftyTwoWeekHigh,
+      ma50: q.fiftyDayAverage ?? null,
+      ma200: q.twoHundredDayAverage ?? null,
       earningsTs: q.earningsTimestamp ?? null,
       rating: q.averageAnalystRating ?? null,
       volume: q.regularMarketVolume,

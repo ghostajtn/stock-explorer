@@ -240,7 +240,7 @@ const home = { rows: [], sort: { key: 'marketCap', dir: -1 }, filter: '', chips:
 const COLS = [
   ['rank', '#'], ['symbol', 'Company', 'l'], ['price', 'Price'], ['changePct', '1D'], ['marketCap', 'Mkt cap'],
   ['pe', 'P/E (TTM)'], ['forwardPE', 'Fwd P/E'], ['eps', 'EPS TTM'], ['epsForward', 'EPS fwd'], ['epsGrowth', 'Fwd EPS Δ'],
-  ['pb', 'P/B'], ['divYield', 'Div yld'], ['range', '52-wk range'], ['earningsTs', 'Next earnings'], ['rating', 'Analysts'],
+  ['pb', 'P/B'], ['divYield', 'Div yld'], ['range', '52-wk range'], ['vs50', 'vs 50-day'], ['vs200', 'vs 200-day'], ['earningsTs', 'Next earnings'], ['rating', 'Analysts'],
 ];
 const CHIPS = {
   cheap: ['Fwd P/E < 25', (r) => isN(r.forwardPE) && r.forwardPE < 25],
@@ -262,6 +262,8 @@ async function loadHome() {
     ...r,
     epsGrowth: isN(r.eps) && r.eps > 0 && isN(r.epsForward) ? r.epsForward / r.eps - 1 : null,
     range: isN(r.high52) && r.high52 > r.low52 ? (r.price - r.low52) / (r.high52 - r.low52) : null,
+    vs50: isN(r.ma50) && r.ma50 > 0 && isN(r.price) ? r.price / r.ma50 - 1 : null,        // price vs 50-day average
+    vs200: isN(r.ma200) && r.ma200 > 0 && isN(r.price) ? r.price / r.ma200 - 1 : null,
   });
   home.rows = d.rows.map(derive);
   home.watch = (d.watch || []).map(derive);
@@ -310,6 +312,7 @@ function renderTable() {
     <td>${nf(r.eps)}</td><td>${nf(r.epsForward)}</td><td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td>
     <td>${nf(r.pb, 1)}</td><td>${isN(r.divYield) && r.divYield ? pct(r.divYield) : '—'}</td>
     <td><span class="bar" title="${nf(r.low52)} – ${nf(r.high52)}">${isN(r.range) ? `<i style="left:calc(${Math.min(1, Math.max(0, r.range)) * 100}% - 1px)"></i>` : ''}</span></td>
+    <td class="${cls(r.vs50)}" title="50-day avg ${nf(r.ma50)}">${isN(r.vs50) ? pc(r.vs50 * 100, 1) : '—'}</td><td class="${cls(r.vs200)}" title="200-day avg ${nf(r.ma200)}">${isN(r.vs200) ? pc(r.vs200 * 100, 1) : '—'}</td>
     <td>${earn(r.earningsTs)}</td><td>${esc((r.rating || '—').replace(/^\d+(\.\d+)?\s*-\s*/, ''))}</td></tr>`).join('')}</tbody>`;
   $('#count').textContent = `${rows.length - (home.watch || []).length} of ${home.rows.length}` + (home.watch?.length ? ` · ★ ${home.watch.length} watchlist` : '');
   $('#tbl').querySelectorAll('th').forEach((th) => th.onclick = () => {
@@ -346,7 +349,7 @@ function lineChart(el, pts, prev) {
 // Interactive price chart (TradingView Lightweight Charts, Apache-2.0): candles or line, volume,
 // 50/200-day moving averages, zoom/pan, crosshair legend. Falls back to the SVG line chart when
 // the library or OHLC data is unavailable (e.g. an older static snapshot).
-let priceChartMode = 'candle', priceCharts = [];
+let priceChartMode = 'candle', priceCharts = [], priceChartSma = { 50: true, 200: true };
 function ema(vals, n) {                       // exponential moving average, seeded with the first value
   const k = 2 / (n + 1), out = []; let prev;
   vals.forEach((x, i) => { prev = i ? x * k + prev * (1 - k) : x; out.push(prev); });
@@ -376,7 +379,7 @@ function priceChart(el, c, withIndicators = false) {
   const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n).trim();
   const bars = []; let last = -1;
   for (const b of c.candles) { const time = Math.floor(b.t / 1000); if (time > last) { bars.push({ time, open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v || 0 }); last = time; } }
-  el.innerHTML = `<div class="toolbar" style="margin:0 0 8px"><button class="chip ${priceChartMode === 'candle' ? 'on' : ''}" data-m="candle">Candles</button><button class="chip ${priceChartMode === 'line' ? 'on' : ''}" data-m="line">Line</button><span class="muted" id="pcleg" style="font-size:12px"></span></div><div id="pcbox" style="height:380px"></div>${withIndicators && bars.length > 35 ? '<div id="rsibox" style="height:110px;margin-top:6px"></div><div id="macdbox" style="height:130px;margin-top:6px"></div>' : ''}`;
+  el.innerHTML = `<div class="toolbar" style="margin:0 0 8px"><button class="chip ${priceChartMode === 'candle' ? 'on' : ''}" data-m="candle">Candles</button><button class="chip ${priceChartMode === 'line' ? 'on' : ''}" data-m="line">Line</button><button class="chip ${priceChartSma[50] ? 'on' : ''}" data-sma="50" style="border-color:var(--c1)">50-day</button><button class="chip ${priceChartSma[200] ? 'on' : ''}" data-sma="200" style="border-color:var(--c3)">200-day</button><span class="muted" id="pcleg" style="font-size:12px"></span></div><div id="pcbox" style="height:380px"></div>${withIndicators && bars.length > 35 ? '<div id="rsibox" style="height:110px;margin-top:6px"></div><div id="macdbox" style="height:130px;margin-top:6px"></div>' : ''}`;
   const opts = () => ({
     autoSize: true,
     layout: { background: { color: 'transparent' }, textColor: v('--mute') },
@@ -393,8 +396,10 @@ function priceChart(el, c, withIndicators = false) {
   const vol = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
   chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
   vol.setData(bars.map((b) => ({ time: b.time, value: b.volume, color: (b.close >= b.open ? v('--up') : v('--down')) + '55' })));
+  const smaSeries = {};
   [[50, v('--c1')], [200, v('--c3')]].forEach(([n, color]) => {
-    const d = sma(bars, n); if (d.length) chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: 'SMA' + n }).setData(d);
+    const d = sma(bars, n); if (d.length) smaSeries[n] = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: n + '-day', visible: priceChartSma[n] });
+    if (d.length) smaSeries[n].setData(d);
   });
   chart.timeScale().fitContent();
   if (withIndicators && bars.length > 35) {   // RSI + MACD panels, scrolled/zoomed together with the price chart
@@ -419,6 +424,12 @@ function priceChart(el, c, withIndicators = false) {
     leg.textContent = b ? `${new Date(b.time * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}   O ${nf(b.open)}  H ${nf(b.high)}  L ${nf(b.low)}  C ${nf(b.close)}  Vol ${nf(b.volume / 1e6, 1)}M` : '';
   });
   el.querySelectorAll('[data-m]').forEach((btn) => btn.onclick = () => { priceChartMode = btn.dataset.m; priceChart(el, c, withIndicators); });
+  el.querySelectorAll('[data-sma]').forEach((btn) => btn.onclick = () => {          // show/hide the 50- and 200-day lines
+    const n = btn.dataset.sma; priceChartSma[n] = !priceChartSma[n]; btn.classList.toggle('on', priceChartSma[n]);
+    smaSeries[n]?.applyOptions({ visible: priceChartSma[n] });
+  });
+  const cl = bars.map((b) => b.close), mm = macd(cl);                                   // latest values for the Indicators card
+  return { rsi: rsi(cl).at(-1), macd: mm.line.at(-1), signal: mm.sig.at(-1), hist: mm.hist.at(-1) };
 }
 function barChart(el, labels, series) {
   const W = 900, H = 240, P = { l: 56, r: 8, t: 10, b: 26 };
@@ -591,6 +602,8 @@ const VIEWS = {
     const lists = ['neg', 'pos'].map((k) => [k, s.news.filter((n) => n.sentiment === k).slice(0, 6)]).filter(([, l]) => l.length);
     el.innerHTML = `<div class="card"><h3>★ Watchlist &amp; price alerts</h3><div class="alerts" id="wlbar"></div>
         <div class="note">Alerts are saved in this browser and checked every minute while the app is open.</div></div>
+      <div class="card"><h3>Indicators</h3><div class="grid" id="ind"></div>
+        <div class="note">Averages and EPS come from Yahoo; RSI and MACD are calculated from the chart's price history for the range you select below (1Y is the usual choice).</div></div>
       <div class="card"><div class="toolbar" id="rng">${['1mo', '6mo', '1y', '5y', 'max'].map((r) => `<button class="chip ${r === '1y' ? 'on' : ''}" data-r="${r}">${r.toUpperCase()}</button>`).join('')}</div><div id="ch" style="min-height:280px"></div>
         <div class="note">Top: price with 50/200-day averages and volume. Middle: RSI (14), above 70 is overbought and below 30 oversold. Bottom: MACD (12, 26, 9).</div></div>
       <div class="card"><h3>News sentiment (wording of ${s.news.length} headlines)</h3>
@@ -598,9 +611,22 @@ const VIEWS = {
         <div class="muted" style="font-size:12px;margin-bottom:8px">${Math.round(count('pos') / tot * 100)}% positive · ${Math.round(count('neg') / tot * 100)}% negative. Scores the words in a headline, not how the stock will react.</div>
         ${lists.map(([k, l]) => `<h3 style="margin-top:12px">${k === 'neg' ? 'Most negative' : 'Most positive'}</h3><ul class="news">${l.map(row).join('')}</ul>`).join('') || '<span class="muted">No clearly positive or negative headlines.</span>'}</div>`;
     renderWlBar();
+    const sd = s.summaryDetail || {}, ks = s.defaultKeyStatistics || {}, px = s.price?.regularMarketPrice;
+    const vs = (ma) => isN(ma) && isN(px) ? `price ${pc((px / ma - 1) * 100, 1)} vs average` : '';
+    const renderInd = (live) => {
+      const epsG = isN(ks.trailingEps) && ks.trailingEps > 0 && isN(ks.forwardEps) ? ks.forwardEps / ks.trailingEps - 1 : null;
+      const golden = isN(sd.fiftyDayAverage) && isN(sd.twoHundredDayAverage) ? sd.fiftyDayAverage > sd.twoHundredDayAverage : null;
+      const r = live?.rsi;
+      $('#ind', el).innerHTML = kpi('EPS (TTM)', usd(ks.trailingEps)) + kpi('EPS (forward)', usd(ks.forwardEps), isN(epsG) ? pc(epsG * 100, 0) + ' vs TTM' : '') +
+        kpi('50-day average', usd(sd.fiftyDayAverage), vs(sd.fiftyDayAverage)) + kpi('200-day average', usd(sd.twoHundredDayAverage), vs(sd.twoHundredDayAverage)) +
+        kpi('Trend (50 vs 200-day)', golden == null ? '—' : golden ? 'Golden cross' : 'Death cross', golden == null ? '' : golden ? '50-day is above the 200-day (bullish)' : '50-day is below the 200-day (bearish)') +
+        kpi('RSI (14)', isN(r) ? nf(r, 1) : '…', isN(r) ? (r >= 70 ? 'overbought' : r <= 30 ? 'oversold' : 'neutral') : '') +
+        kpi('MACD', isN(live?.macd) ? nf(live.macd, 2) : '…', isN(live?.signal) ? `signal ${nf(live.signal, 2)} · ${live.macd >= live.signal ? 'bullish' : 'bearish'}` : '');
+    };
+    renderInd();
     const draw = async (r) => {
       const ch = $('#ch', el); ch.innerHTML = '<div class="loading">Loading chart…</div>';
-      try { const c = await api(`/api/chart/${s.symbol}?range=${r}`); priceChart(ch, c, true); } catch (e) { ch.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+      try { const c = await api(`/api/chart/${s.symbol}?range=${r}`); renderInd(priceChart(ch, c, true)); } catch (e) { ch.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
     };
     $('#rng', el).querySelectorAll('button').forEach((b) => b.onclick = () => { $('#rng', el).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(b.dataset.r); });
     draw('1y');
