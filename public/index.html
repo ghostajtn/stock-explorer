@@ -367,6 +367,7 @@ async function loadHome() {
   });
   home.rows = d.rows.map(derive);
   home.watch = (d.watch || []).map(derive);
+  home.ai = (d.ai || []).map((g) => ({ group: g.group, rows: g.rows.map(derive) }));
   $('#stamp').textContent = 'Updated ' + new Date(d.updated).toLocaleTimeString();
 }
 function renderHome() {

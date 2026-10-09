@@ -90,8 +90,21 @@ async function getQuotes(symbols) {
 // Always shown above the table, whatever their market-cap rank. Add tickers here.
 const WATCHLIST = ['NBIS', 'MRNA'];
 
+// The AI supply chain, grouped. Shown on the AI stocks page whatever their market-cap rank;
+// a ticker Yahoo has no quote for is skipped. Add or move tickers here.
+const AI_GROUPS = {
+  'Chips & accelerators': 'NVDA AMD AVGO MRVL INTC ARM QCOM MU ALAB CRDO',
+  'Chip equipment & foundry': 'TSM ASML LRCX AMAT KLAC SNPS CDNS',
+  'Cloud & AI platforms': 'MSFT GOOGL AMZN META ORCL IBM CRWV NBIS SPCX',
+  'AI software & data': 'PLTR SNOW AI PATH DDOG MDB NOW CRM ADBE ESTC',
+  'Servers, networking & data centers': 'SMCI DELL HPE ANET CSCO VRT COHR CIEN EQIX DLR IREN APLD',
+  'Power for AI': 'CEG VST NRG GEV ETN SMR OKLO',
+  'AI applications': 'TSLA APP SOUN TEM RXRX',
+};
+const AI_SYMBOLS = [...new Set(Object.values(AI_GROUPS).flatMap((g) => g.split(' ')))];
+
 const top50 = () => cached('top50', 60e3, async () => {
-  const quotes = await getQuotes([...new Set([...UNIVERSE, ...WATCHLIST])]);
+  const quotes = await getQuotes([...new Set([...UNIVERSE, ...WATCHLIST, ...AI_SYMBOLS])]);
   const toRow = (q, rank) => ({
       rank,
       symbol: q.symbol,
@@ -122,7 +135,11 @@ const top50 = () => cached('top50', 60e3, async () => {
     .map((q, i) => toRow(q, i + 1));
   const watch = WATCHLIST.map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean)
     .map((q) => ({ ...toRow(q, '★'), watch: true }));
-  return { updated: Date.now(), rows, watch };
+  const ai = Object.entries(AI_GROUPS).map(([group, syms]) => ({
+    group,
+    rows: syms.split(' ').map((s) => quotes.find((q) => q.symbol === s)).filter(Boolean).map((q) => toRow(q, '')).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0)),
+  })).filter((g) => g.rows.length);
+  return { updated: Date.now(), rows, watch, ai };
 });
 
 const SUMMARY_MODULES = [

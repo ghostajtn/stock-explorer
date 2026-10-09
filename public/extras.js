@@ -2,7 +2,7 @@
 // dividends, plus the nav and market strip. Loaded before the main script; everything here runs
 // later (from the router or DOMContentLoaded), when the helpers in index.html ($, api, nf, usd...) exist.
 
-const NAV = [['', 'Home'], ['~heatmap', 'Heatmap'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~dividends', 'Dividends']];
+const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~dividends', 'Dividends']];
 function renderNav(sym) {
   $('#nav').innerHTML = NAV.map(([h, label]) => `<a href="#/${h}" class="${(h === '' ? sym === '' : sym.startsWith(h)) ? 'on' : ''}">${label}</a>`).join('');
 }
@@ -243,4 +243,38 @@ async function dividendsPage(el) {
   draw();
 }
 
-const EXTRA_PAGES = { heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
+// ---------- AI stocks (the AI supply chain, grouped) ----------
+let aiSort = 'marketCap';
+async function aiPage(el) {
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  await ensureHome();
+  const groups = home.ai || [], all = groups.flatMap((g) => g.rows), upN = all.filter((r) => r.changePct > 0).length;
+  const avg = (rs) => { const v = rs.map((r) => r.changePct).filter(isN); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const SORTS = { marketCap: 'Market cap', changePct: 'Today', vs50: 'vs 50-day', vs200: 'vs 200-day', forwardPE: 'Fwd P/E' };
+  const sig = new Map();                                         // symbol -> signal, filled by the scan button
+  const draw = () => {
+    $('#aibody').innerHTML = groups.map((g) => {
+      const rows = g.rows.slice().sort((a, b) => aiSort === 'forwardPE' ? (a[aiSort] > 0 ? a[aiSort] : 1e9) - (b[aiSort] > 0 ? b[aiSort] : 1e9) : (b[aiSort] ?? -1e9) - (a[aiSort] ?? -1e9)), a = avg(rows);
+      return `<div class="card scroll"><h3>${esc(g.group)} <span class="muted" style="text-transform:none;letter-spacing:0">· average today <span class="${cls(a)}">${pc(a)}</span></span></h3><table><thead><tr><th class="l">Company</th><th>Price</th><th>1D</th><th>Mkt cap</th><th>P/E</th><th>Fwd P/E</th><th>Fwd EPS Δ</th><th>vs 50-day</th><th>vs 200-day</th><th>Analysts</th><th>Signal</th></tr></thead><tbody>${rows.map((r) => {
+        const s = sig.get(r.symbol);
+        return `<tr class="row" data-s="${esc(r.symbol)}"><td class="l"><span class="sym">${esc(r.symbol)}</span><span class="nm">${esc(r.name || '')}</span></td><td>${nf(r.price)}</td><td class="${cls(r.changePct)}">${pc(r.changePct)}</td><td>${big(r.marketCap)}</td><td>${r.pe > 0 ? nf(r.pe, 1) : 'n/m'}</td><td>${r.forwardPE > 0 ? nf(r.forwardPE, 1) : 'n/m'}</td>
+          <td class="${cls(r.epsGrowth)}">${isN(r.epsGrowth) ? pc(r.epsGrowth * 100, 0) : '—'}</td><td class="${cls(r.vs50)}">${isN(r.vs50) ? pc(r.vs50 * 100, 1) : '—'}</td><td class="${cls(r.vs200)}">${isN(r.vs200) ? pc(r.vs200 * 100, 1) : '—'}</td>
+          <td>${esc((r.rating || '—').replace(/^\d+(\.\d+)?\s*-\s*/, ''))}</td><td>${s ? verdictChip(s.verdict) + ' <span class="muted">' + s.score + '</span>' : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>`;
+    }).join('') || '<div class="card muted">No AI stock data available.</div>';
+    $('#aibody').querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
+  };
+  el.innerHTML = pageHead('AI stocks', `${all.length} companies across the AI supply chain, from chips to power. ${upN} of ${all.length} are up today.`) +
+    `<div class="toolbar">Sort by: ${Object.entries(SORTS).map(([k, l]) => `<button class="chip ${k === aiSort ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}${STATIC ? '' : '<button class="chip" id="aiscan" style="margin-left:auto">Score all with the Buy-setup checklist</button>'}<span class="muted" id="aiprog"></span></div><div id="aibody"></div>
+    <p class="note">AI stocks tend to move together and swing hard, so a group like this is concentrated risk, not diversification. The "Signal" column is a checklist (analysts, news, trend, fundamentals), not a prediction. Information only, not investment advice.</p>`;
+  el.querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { aiSort = b.dataset.k; el.querySelectorAll('[data-k]').forEach((x) => x.classList.toggle('on', x === b)); draw(); });
+  if ($('#aiscan')) $('#aiscan').onclick = async () => {
+    const btn = $('#aiscan'), syms = all.map((r) => r.symbol); let i = 0, n = 0; btn.disabled = true;
+    const worker = async () => { while (i < syms.length) { const s = syms[i++]; try { sig.set(s, await getSignal(s)); } catch {} $('#aiprog').textContent = `Scoring ${++n} of ${syms.length}…`; } };
+    await Promise.all([worker(), worker(), worker(), worker()]); btn.disabled = false;
+    const buys = [...sig.values()].filter((x) => x.verdict === 'buy').map((x) => x.symbol);
+    $('#aiprog').textContent = `Done: ${buys.length} Buy setup${buys.length === 1 ? '' : 's'}${buys.length ? ' (' + buys.join(', ') + ')' : ''}`; draw();
+  };
+  draw();
+}
+
+const EXTRA_PAGES = { ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
