@@ -1,4 +1,33 @@
 {
+  "MRNA": {
+    "asOf": "Q2 2026 results release, Jul 31, 2026 (company press release; check later news for events after this date)",
+    "guidance": [
+      { "label": "2026 revenue", "value": "Up to 10% growth vs 2025; about 50% US / 50% international" },
+      { "label": "H2 2026 revenue timing", "value": "About 55% of second-half revenue lands in Q3" },
+      { "label": "2026 R&D / SG&A", "value": "~$2.9B (lowered from ~$3.0B) / ~$1.0B" },
+      { "label": "2026 cost of sales", "value": "~$1.7B (lowered from ~$1.8B), including the ~$0.9B litigation settlement" },
+      { "label": "Year-end 2026 cash and investments", "value": "$4.7-5.2B (improved ~$0.2B); excludes the remaining $0.9B credit facility" },
+      { "label": "2026 capex", "value": "$0.2-0.3B" },
+      { "label": "Analyst Day", "value": "November 12, 2026" }
+    ],
+    "deals": [
+      { "partner": "FDA - mFLUSIVA (mRNA-1010, seasonal flu)", "what": "Unanimous advisory committee (VRBPAC) recommendation on June 18; would be Moderna's fifth approved product. Also under review in Europe, Canada and Australia", "size": "Not disclosed", "timing": "FDA decision date Aug 5, 2026 (outcome not verified here)" },
+      { "partner": "Merck", "what": "Intismeran autogene (mRNA-4157) personalised cancer vaccine with Keytruda: 9 Phase 2/3 trials; 5-year Phase 2b melanoma data showed a 49% lower risk of recurrence or death vs Keytruda alone; Phase 3 melanoma data possible in 2026", "size": "Shared development program", "timing": "Phase 3 melanoma readout potentially 2026" },
+      { "partner": "European Commission", "what": "Joint procurement contract for mRESVIA (RSV vaccine) on behalf of six countries", "size": "Up to 24 million doses", "timing": "Signed Q2 2026" },
+      { "partner": "Brazil (local manufacturer)", "what": "Collaboration supporting a COVID vaccine supply agreement", "size": "Not disclosed", "timing": "Signed Q2 2026" },
+      { "partner": "UK government", "what": "Long-term strategic partnership; COVID vaccine deliveries drove Q2 revenue", "size": "Not disclosed", "timing": "Ongoing" },
+      { "partner": "CEPI", "what": "Expanded partnership", "size": "Up to $50M", "timing": "2026" },
+      { "partner": "Regulators - combination and other vaccines", "what": "mCOMBRIAX (flu + COVID) approved in the EU and under review in Japan, Canada, Australia; awaiting FDA guidance on a US refiling. mNEXSPIKE approved in Japan and Taiwan; mRESVIA approved in Australia and Mexico", "size": "n/a", "timing": "2026" },
+      { "partner": "Rare disease", "what": "Propionic acidemia (mRNA-3927) registrational study fully enrolled; data possible in 2026. Decision on a methylmalonic acidemia pivotal trial deferred until then", "size": "n/a", "timing": "2026" }
+    ],
+    "risks": [
+      "Still heavily loss-making: Q2 net loss $782M on $145M revenue; cash fell to $6.9B and a $950M settlement was paid in July",
+      "Revenue is small and lumpy: Q2 was $145M, up 2% year over year; guidance is only up to 10% growth",
+      "Norovirus vaccine (mRNA-1403) missed the Phase 3 interim criteria; the trial continues with an extra cohort",
+      "Heavy dependence on a few pipeline readouts (cancer vaccine, rare disease) and on regulatory decisions",
+      "Valuation allowance and no tax benefit; any further cash burn beyond $4.7-5.2B guidance would add pressure"
+    ]
+  },
   "NBIS": {
     "asOf": "Q2 2026 earnings call, Aug 12, 2026",
     "guidance": [
