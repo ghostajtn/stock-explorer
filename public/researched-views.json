@@ -68,5 +68,65 @@
     "url": "https://www.youtube.com/watch?v=kLl9nQB0HiM",
     "basis": "transcript (speakers are not labelled)",
     "note": "A speaker calls Oracle a decent proxy for OpenAI with a much more reasonable valuation and thinks the hedging against Oracle (credit default swaps) has largely peaked. Mildly positive conversation, not a recommendation."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "CRWV",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-07-25",
+    "url": "https://www.youtube.com/watch?v=zGcL6_71u8w",
+    "basis": "video title and description",
+    "note": "Says he is buying CoreWeave after a sharp selloff. His case in the description: revenue backlog of $99.4B after more than $40B of new Q1 commitments, and he prefers to trade 'cash flow statements and contracted demand' over headlines. No price target in the description."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "ORCL",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-07-25",
+    "url": "https://www.youtube.com/watch?v=zGcL6_71u8w",
+    "basis": "video title and description",
+    "note": "Says he is buying Oracle after the selloff. Cites a record Q4 with remaining performance obligations up 363% year over year, even though the stock had its worst month since September 1990. No price target in the description."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "AMZN",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "MSFT",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "META",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "GOOGL",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
   }
 ]
