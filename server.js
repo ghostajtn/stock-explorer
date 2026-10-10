@@ -173,6 +173,39 @@ const top50 = () => cached('top50', 60e3, async () => {
   return { updated: Date.now(), rows, watch, ai };
 });
 
+// ---------- US bond market ----------
+// Treasury yields come from Yahoo's index quotes (value = yield in %, change = percentage points, so ×100 = basis points).
+const YIELDS = [['^IRX', '3-month', 0.25], ['^FVX', '5-year', 5], ['^TNX', '10-year', 10], ['^TYX', '30-year', 30]];
+const BOND_ETFS = [['SHY', 'Short-term Treasuries (1-3 yr)'], ['IEF', 'Intermediate Treasuries (7-10 yr)'], ['TLT', 'Long Treasuries (20+ yr)'], ['TIP', 'Inflation-protected (TIPS)'], ['AGG', 'US aggregate bonds'], ['LQD', 'Investment-grade corporate'], ['HYG', 'High-yield (junk) corporate']];
+async function bonds() {
+  const qs = await getQuotes([...YIELDS.map((y) => y[0]), ...BOND_ETFS.map((b) => b[0])]);
+  const by = (s) => qs.find((q) => q.symbol === s) || {};
+  const yields = YIELDS.map(([symbol, label, years]) => { const q = by(symbol); return { symbol, label, years, yield: q.regularMarketPrice ?? null, changeBps: q.regularMarketChange != null ? q.regularMarketChange * 100 : null, prev: q.regularMarketPreviousClose ?? null }; });
+  const y = (s) => yields.find((x) => x.symbol === s)?.yield ?? null;
+  const spread = (a, b) => (y(a) != null && y(b) != null ? (y(a) - y(b)) * 100 : null);     // in basis points
+  const etfs = BOND_ETFS.map(([symbol, name]) => { const q = by(symbol); return { symbol, name, price: q.regularMarketPrice ?? null, changePct: q.regularMarketChangePercent ?? null, ma50: q.fiftyDayAverage ?? null, ma200: q.twoHundredDayAverage ?? null, yield: q.trailingAnnualDividendYield ?? q.yield ?? null }; });
+  return { updated: Date.now(), yields, spreads: { '10y-3m': spread('^TNX', '^IRX'), '30y-5y': spread('^TYX', '^FVX'), '10y-5y': spread('^TNX', '^FVX') }, etfs };
+}
+// Bond-market headlines. "move" tags what a headline says yields did (rise / fall), from its wording only.
+const bondNews = async () => {
+  const [search, rss] = await Promise.allSettled([
+    yahoo(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent('Treasury yields bond market')}&newsCount=30&quotesCount=0`, { crumb: false }),
+    fetch('https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ETNX,TLT,IEF&region=US&lang=en-US', { headers: UA }).then((r) => r.text()),
+  ]);
+  const items = [];
+  if (search.status === 'fulfilled') for (const n of search.value.news || []) items.push({ title: n.title, url: n.link, source: n.publisher, ts: (n.providerPublishTime || 0) * 1000 });
+  if (rss.status === 'fulfilled') {
+    const dec = (s) => s.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').trim();
+    for (const m of rss.value.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+      const pick = (tag) => (m[1].match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)) || [])[1] || '';
+      items.push({ title: dec(pick('title')), url: dec(pick('link')), source: 'Yahoo Finance', ts: Date.parse(pick('pubDate')) || 0 });
+    }
+  }
+  const seen = new Set(), up = /\b(yields?|rates?)\b.*\b(rise|rises|rising|jump|jumps|climb|climbs|surge|surges|higher|spike|spikes|up)\b|\b(rise|jump|climb|surge|spike)\b.*\byields?\b/i, down = /\b(yields?|rates?)\b.*\b(fall|falls|falling|drop|drops|slip|slips|slide|slides|lower|ease|eases|retreat|retreats|down)\b|\b(fall|drop|slip|slide|retreat)\b.*\byields?\b/i;
+  return items.filter((n) => n.title && !seen.has(n.title.toLowerCase()) && seen.add(n.title.toLowerCase()) && /yield|treasur|bond|fed\b|rate|inflation|debt/i.test(n.title))
+    .sort((a, b) => b.ts - a.ts).slice(0, 25).map((n) => ({ ...n, move: up.test(n.title) ? 'up' : down.test(n.title) ? 'down' : null }));
+};
+
 // One stock's comparison metrics (a single light request, cached 30 min), used by the Peers tab.
 const peerData = (sym) => cached('peer:' + sym, 30 * 60e3, async () => {
   const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=financialData,defaultKeyStatistics,summaryDetail,assetProfile,price`);
@@ -303,40 +336,44 @@ const json = (res, code, body) => {
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
+  // Browsers send ^ and = as %5E / %3D (e.g. /api/chart/%5ETNX); decode once so the route patterns below see the real symbol.
+  let pn; try { pn = decodeURIComponent(u.pathname); } catch { res.writeHead(400); return res.end('Bad request'); }
   try {
-    if (u.pathname === '/api/top50') return json(res, 200, await top50());
-    if (u.pathname === '/api/search') return json(res, 200, await search(u.searchParams.get('q') || ''));
-    if (u.pathname === '/api/market') {                  // index/rates strip shown above every page
-      const MK = [['^GSPC', 'S&P 500'], ['^IXIC', 'Nasdaq'], ['^DJI', 'Dow'], ['^VIX', 'VIX (fear)'], ['^TNX', '10-yr yield'], ['DX-Y.NYB', 'US dollar'], ['GC=F', 'Gold'], ['CL=F', 'Oil'], ['BTC-USD', 'Bitcoin']];
+    if (pn === '/api/top50') return json(res, 200, await top50());
+    if (pn === '/api/search') return json(res, 200, await search(u.searchParams.get('q') || ''));
+    if (pn === '/api/market') {                  // index/rates strip shown above every page
+      const MK = [['^GSPC', 'S&P 500'], ['^IXIC', 'Nasdaq'], ['^DJI', 'Dow'], ['^VIX', 'VIX (fear)'], ['^IRX', 'US 3-mo yield'], ['^FVX', 'US 5-yr yield'], ['^TNX', 'US 10-yr yield'], ['^TYX', 'US 30-yr yield'], ['DX-Y.NYB', 'US dollar'], ['GC=F', 'Gold'], ['CL=F', 'Oil'], ['BTC-USD', 'Bitcoin']];
       const qs = await cached('market', 30e3, () => getQuotes(MK.map((m) => m[0])));
-      return json(res, 200, MK.map(([symbol, name]) => { const q = qs.find((x) => x.symbol === symbol) || {}; return { symbol, name, price: q.regularMarketPrice ?? null, changePct: q.regularMarketChangePercent ?? null }; }));
+      return json(res, 200, MK.map(([symbol, name]) => { const q = qs.find((x) => x.symbol === symbol) || {}; return { symbol, name, price: q.regularMarketPrice ?? null, change: q.regularMarketChange ?? null, changePct: q.regularMarketChangePercent ?? null }; }));
     }
-    if (u.pathname === '/api/quotes') {
+    if (pn === '/api/bonds') return json(res, 200, await cached('bonds', 30e3, bonds));
+    if (pn === '/api/bondnews') return json(res, 200, await cached('bondnews', 10 * 60e3, bondNews));
+    if (pn === '/api/quotes') {
       // Live prices for the browser-side watchlist/alerts: ?symbols=AAPL,MSFT (max 50).
       const syms = (u.searchParams.get('symbols') || '').toUpperCase().split(',').filter((s) => /^[\w.\-^=]{1,12}$/.test(s)).slice(0, 100);
       const qs = syms.length ? await cached('quotes:' + syms.join(','), 30e3, () => getQuotes(syms)) : [];
       return json(res, 200, qs.map((q) => ({ symbol: q.symbol, name: q.shortName || q.longName, price: q.regularMarketPrice, changePct: q.regularMarketChangePercent })));
     }
     let m;
-    if ((m = u.pathname.match(/^\/api\/peers\/([\w.\-^=]+)$/))) return json(res, 200, await cached('peers:' + m[1].toUpperCase(), 10 * 60e3, () => peersOf(m[1].toUpperCase())));
-    if ((m = u.pathname.match(/^\/api\/signal\/([\w.\-^=]+)$/))) {
+    if ((m = pn.match(/^\/api\/peers\/([\w.\-^=]+)$/))) return json(res, 200, await cached('peers:' + m[1].toUpperCase(), 10 * 60e3, () => peersOf(m[1].toUpperCase())));
+    if ((m = pn.match(/^\/api\/signal\/([\w.\-^=]+)$/))) {
       const sym = m[1].toUpperCase(), s = await stock(sym);
       const c = await chart(sym, '1y').catch(() => null);
       return json(res, 200, computeSignal(s, c?.candles?.map((b) => b.c)));
     }
-    if ((m = u.pathname.match(/^\/api\/backtest\/([\w.\-^=]+)$/))) {
+    if ((m = pn.match(/^\/api\/backtest\/([\w.\-^=]+)$/))) {
       const c = await chart(m[1].toUpperCase(), '5yd');
       const all = runBacktests(c.candles.map((b) => ({ t: b.t, c: b.c })));
       return json(res, 200, { symbol: m[1].toUpperCase(), result: all?.current ?? null, ...(u.searchParams.has('all') ? { presets: all } : {}) });
     }
-    if ((m = u.pathname.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
+    if ((m = pn.match(/^\/api\/pipeline\/([\w.\-]+)$/))) {
       // Hand-curated forward deals/guidance (edit pipeline.json to add tickers).
       const all = JSON.parse(await fs.readFile(path.join(ROOT, 'pipeline.json'), 'utf8'));
       return json(res, 200, all[m[1].toUpperCase()] || null);
     }
-    if ((m = u.pathname.match(/^\/api\/stock\/([\w.\-^=]+)$/))) return json(res, 200, await stock(m[1].toUpperCase()));
-    if ((m = u.pathname.match(/^\/api\/chart\/([\w.\-^=]+)$/))) return json(res, 200, await chart(m[1].toUpperCase(), u.searchParams.get('range') || '1y'));
-    const file = path.join(ROOT, 'public', u.pathname === '/' ? 'index.html' : path.normalize(u.pathname));
+    if ((m = pn.match(/^\/api\/stock\/([\w.\-^=]+)$/))) return json(res, 200, await stock(m[1].toUpperCase()));
+    if ((m = pn.match(/^\/api\/chart\/([\w.\-^=]+)$/))) return json(res, 200, await chart(m[1].toUpperCase(), u.searchParams.get('range') || '1y'));
+    const file = path.join(ROOT, 'public', pn === '/' ? 'index.html' : path.normalize(pn));
     if (!file.startsWith(path.join(ROOT, 'public'))) { res.writeHead(403); return res.end(); }
     const data = await fs.readFile(file);
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });

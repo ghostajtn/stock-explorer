@@ -2,7 +2,7 @@
 // dividends, plus the nav and market strip. Loaded before the main script; everything here runs
 // later (from the router or DOMContentLoaded), when the helpers in index.html ($, api, nf, usd...) exist.
 
-const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~views', 'Creator views'], ['~dividends', 'Dividends']];
+const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~bonds', 'Bonds'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~views', 'Creator views'], ['~dividends', 'Dividends']];
 function renderNav(sym) {
   $('#nav').innerHTML = NAV.map(([h, label]) => `<a href="#/${h}" class="${(h === '' ? sym === '' : sym.startsWith(h)) ? 'on' : ''}">${label}</a>`).join('');
 }
@@ -12,7 +12,10 @@ async function loadMarket() {
   if (STATIC) { $('#market').style.display = 'none'; return; }
   try {
     const m = await api('/api/market');
-    $('#market').innerHTML = m.filter((x) => isN(x.price)).map((x) => `<span>${esc(x.name)} <b>${nf(x.price, x.price > 1000 ? 0 : 2)}</b><span class="${cls(x.changePct)}">${pc(x.changePct)}</span></span>`).join('');
+    // Treasury yields link to the Bonds page; their change is shown in basis points (a yield moving up is not "good" or "bad" by itself, so it is not coloured).
+    $('#market').innerHTML = m.filter((x) => isN(x.price)).map((x) => /yield/.test(x.name)
+      ? `<a href="#/~bonds" style="color:inherit;text-decoration:none"><span>${esc(x.name)} <b>${nf(x.price, 2)}%</b><span class="muted">${isN(x.change) ? (x.change >= 0 ? '▲' : '▼') + ' ' + nf(Math.abs(x.change) * 100, 1) + ' bp' : ''}</span></span></a>`
+      : `<span>${esc(x.name)} <b>${nf(x.price, x.price > 1000 ? 0 : 2)}</b><span class="${cls(x.changePct)}">${pc(x.changePct)}</span></span>`).join('');
   } catch { /* strip stays as it was */ }
 }
 addEventListener('DOMContentLoaded', () => { loadMarket(); setInterval(loadMarket, 60000); });
@@ -249,6 +252,47 @@ async function dividendsPage(el) {
   draw();
 }
 
+// ---------- US bond market ----------
+let bondRange = '1y';
+async function bondsPage(el) {
+  const $ = (s, r = el) => r.querySelector(s);
+  el.innerHTML = '<div class="loading">Loading the bond market…</div>';
+  let d, news = [];
+  try { [d, news] = await Promise.all([api('/api/bonds'), api('/api/bondnews').catch(() => [])]); }
+  catch (e) { el.innerHTML = pageHead('US bond market', '') + `<div class="card err">${STATIC ? 'The bond page needs the local app (live data).' : esc(e.message)}</div>`; return; }
+  const y = (s) => d.yields.find((x) => x.symbol === s)?.yield, sp = d.spreads;
+  const curve = (v, label) => !isN(v) ? '—' : v < 0 ? `Inverted: short-term yields are above long-term ones. That has often come before slowdowns, but the timing is unreliable.` : v < 50 ? 'Nearly flat.' : 'Normal upward slope: longer bonds pay more than shorter ones.';
+  const bp = (v) => isN(v) ? (v >= 0 ? '+' : '') + nf(v, 0) + ' bp' : '—';
+  el.innerHTML = pageHead('US bond market', 'Treasury yields, the yield curve, bond funds and the latest bond-market news. Yahoo Finance data, delayed.') +
+    `<div class="grid" style="margin-bottom:14px">${d.yields.map((x) => kpi(`${x.label} Treasury yield`, isN(x.yield) ? nf(x.yield, 2) + '%' : '—', isN(x.changeBps) ? `${x.changeBps >= 0 ? '▲' : '▼'} ${nf(Math.abs(x.changeBps), 1)} basis points today` : '')).join('')}</div>
+    <div class="two"><div class="card"><h3>Yield curve (today)</h3><div id="curve"></div><div class="muted" style="font-size:12px;margin-top:6px">10-year minus 3-month: <b>${bp(sp['10y-3m'])}</b>. ${curve(sp['10y-3m'])}</div></div>
+      <div class="card"><h3>What it means</h3><ul style="margin:0;padding-left:18px;line-height:1.7"><li>When yields <b>rise</b>, existing bond prices <b>fall</b>, and the other way round.</li><li>Higher yields make borrowing dearer and give investors a safer alternative to stocks, which often weighs on growth and tech valuations.</li><li>Falling yields tend to help stocks but can also signal worry about growth.</li><li>The 10-year yield is a benchmark for mortgages and company borrowing.</li></ul><div class="note">General background, not a forecast.</div></div></div>
+    <div class="card"><h3>Yields over time</h3><div class="toolbar" id="brng">${['1mo', '6mo', '1y', '5y', 'max'].map((r) => `<button class="chip ${r === bondRange ? 'on' : ''}" data-r="${r}">${r.toUpperCase()}</button>`).join('')}<span class="muted" style="font-size:12px"><span style="color:#d29922">■</span> 3-month <span style="color:#3fb950">■</span> 5-year <span style="color:#58a6ff">■</span> 10-year <span style="color:#f778ba">■</span> 30-year</span></div><div id="bchart" style="height:340px"></div></div>
+    <div class="card scroll"><h3>Bond funds (ETFs)</h3><table><thead><tr><th class="l">Fund</th><th class="l">What it holds</th><th>Price</th><th>Today</th><th>vs 50-day</th><th>vs 200-day</th></tr></thead><tbody>${d.etfs.map((e) => {
+      const v50 = isN(e.ma50) ? e.price / e.ma50 - 1 : null, v200 = isN(e.ma200) ? e.price / e.ma200 - 1 : null;
+      return `<tr class="row" data-s="${esc(e.symbol)}"><td class="l"><span class="sym">${esc(e.symbol)}</span></td><td class="l muted">${esc(e.name)}</td><td>${usd(e.price)}</td><td class="${cls(e.changePct)}">${pc(e.changePct)}</td><td class="${cls(v50)}">${isN(v50) ? pc(v50 * 100, 1) : '—'}</td><td class="${cls(v200)}">${isN(v200) ? pc(v200 * 100, 1) : '—'}</td></tr>`; }).join('')}</tbody></table>
+      <div class="note">Long-term funds like TLT move the most when yields change. High-yield (HYG) behaves more like stocks than like Treasuries.</div></div>
+    <div class="card"><h3>Bond-market news</h3>${news.length ? `<ul class="news">${news.slice(0, 15).map((n) => `<li>${n.move ? `<span class="tag news" title="From the wording of the headline">yields ${n.move === 'up' ? '▲' : '▼'}</span>` : ''}<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="muted">· ${esc(n.source || '')}${n.ts ? ' · ' + ago(n.ts) : ''}</span></li>`).join('')}</ul>` : '<span class="muted">No bond headlines available right now.</span>'}
+      <div class="note">The arrows come only from the wording of a headline and can be wrong. Open the story to check.</div></div>${NOT_ADVICE}`;
+  // yield curve (equal spacing between maturities)
+  const pts = d.yields.filter((x) => isN(x.yield)), W = 520, H = 170, P = { l: 40, r: 16, t: 14, b: 28 }, lo = Math.min(...pts.map((p) => p.yield)) - 0.2, hi = Math.max(...pts.map((p) => p.yield)) + 0.2;
+  const X = (i) => P.l + i / (pts.length - 1 || 1) * (W - P.l - P.r), Y = (v) => P.t + (1 - (v - lo) / (hi - lo || 1)) * (H - P.t - P.b);
+  $('#curve').innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><path d="${pts.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.yield).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>${pts.map((p, i) => `<circle cx="${X(i)}" cy="${Y(p.yield)}" r="4" fill="var(--accent)"/><text x="${X(i)}" y="${Y(p.yield) - 9}" text-anchor="middle" style="fill:var(--text)">${nf(p.yield, 2)}%</text><text x="${X(i)}" y="${H - 8}" text-anchor="middle">${p.label}</text>`).join('')}</svg>`;
+  // history chart
+  const draw = async () => {
+    const box = $('#bchart'); box.innerHTML = '<div class="loading">Loading chart…</div>';
+    const series = await Promise.all(d.yields.map((x) => api(`/api/chart/${encodeURIComponent(x.symbol)}?range=${bondRange}`).catch(() => null)));
+    if (!el.isConnected || !window.LightweightCharts) return;
+    box.innerHTML = ''; const css = getComputedStyle(document.documentElement), col = ['#d29922', '#3fb950', '#58a6ff', '#f778ba'];
+    const chart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { color: 'transparent' }, textColor: css.getPropertyValue('--mute').trim() }, grid: { vertLines: { color: 'transparent' }, horzLines: { color: css.getPropertyValue('--line').trim() } }, rightPriceScale: { borderColor: css.getPropertyValue('--line').trim() }, timeScale: { borderColor: css.getPropertyValue('--line').trim() } });
+    series.forEach((c, i) => { if (!c?.points?.length) return; const seen = new Set(); chart.addLineSeries({ color: col[i], lineWidth: 2, title: d.yields[i].label, priceLineVisible: false, priceFormat: { type: 'custom', formatter: (v) => v.toFixed(2) + '%' } }).setData(c.points.map(([t, v]) => ({ time: Math.floor(t / 1000), value: v })).filter((p) => !seen.has(p.time) && seen.add(p.time))); });
+    chart.timeScale().fitContent();
+  };
+  $('#brng').querySelectorAll('button').forEach((b) => b.onclick = () => { bondRange = b.dataset.r; $('#brng').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); draw(); });
+  el.querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
+  draw();
+}
+
 // ---------- AI stocks (the AI supply chain, grouped) ----------
 let aiSort = 'marketCap';
 async function aiPage(el) {
@@ -283,4 +327,4 @@ async function aiPage(el) {
   draw();
 }
 
-const EXTRA_PAGES = { views: (el) => viewsPage(el), ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
+const EXTRA_PAGES = { bonds: bondsPage, views: (el) => viewsPage(el), ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
