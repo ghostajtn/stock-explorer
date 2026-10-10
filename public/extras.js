@@ -2,7 +2,7 @@
 // dividends, plus the nav and market strip. Loaded before the main script; everything here runs
 // later (from the router or DOMContentLoaded), when the helpers in index.html ($, api, nf, usd...) exist.
 
-const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~dividends', 'Dividends']];
+const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~views', 'Creator views'], ['~dividends', 'Dividends']];
 function renderNav(sym) {
   $('#nav').innerHTML = NAV.map(([h, label]) => `<a href="#/${h}" class="${(h === '' ? sym === '' : sym.startsWith(h)) ? 'on' : ''}">${label}</a>`).join('');
 }
@@ -160,7 +160,8 @@ async function labPage(el) {
         const sym = syms[i++];
         try {
           const { presets } = await api(`/api/backtest/${encodeURIComponent(sym)}?all=1`);
-          if (presets) { done++; now[sym] = Object.fromEntries(Object.entries(presets).map(([k, r]) => [k, r.nowInSetup])); for (const [k, r] of Object.entries(presets)) { const P = pooled[k] ||= { name: r.name, about: r.about, h: {} };
+          if (presets) { done++; now[sym] = Object.fromEntries(Object.entries(presets).map(([k, r]) => [k, r.nowInSetup])); for (const [k, r] of Object.entries(presets)) { const P = pooled[k] ||= { name: r.name, about: r.about, h: {}, split: { train: { signal: { n: 0, sum: 0 }, all: { n: 0, sum: 0 } }, test: { signal: { n: 0, sum: 0 }, all: { n: 0, sum: 0 } } } };
+            if (r.split) for (const part of ['train', 'test']) for (const w of ['signal', 'all']) { P.split[part][w].n += r.split[part][w].n; P.split[part][w].sum += r.split[part][w].sum; }
             for (const h of [21, 63, 126]) { const t = P.h[h] ||= { signal: { n: 0, sum: 0, wins: 0 }, all: { n: 0, sum: 0, wins: 0 } }; for (const w of ['signal', 'all']) { const x = r.horizons[h][w]; t[w].n += x.n; t[w].sum += x.sum; t[w].wins += x.wins; } } } }
         } catch { /* skip */ }
         out.innerHTML = `<div class="muted">Running… ${i} of ${syms.length}</div>`;
@@ -168,9 +169,14 @@ async function labPage(el) {
     };
     await Promise.all([worker(), worker(), worker(), worker()]); btn.disabled = false;
     const avg = (x) => x.n ? x.sum / x.n : null, rows = Object.entries(pooled).map(([k, P]) => { const s3 = P.h[63].signal, a3 = P.h[63].all, s6 = P.h[126].signal, a6 = P.h[126].all;
-      return { k, P, d3: avg(s3) - avg(a3), d6: avg(s6) - avg(a6), a3: avg(s3), a6: avg(s6), w3: s3.n ? s3.wins / s3.n : null, n: s3.n, base3: avg(a3), base6: avg(a6) }; }).sort((a, b) => b.d3 - a.d3);
+      return { k, P, d3: avg(s3) - avg(a3), d6: avg(s6) - avg(a6), a3: avg(s3), a6: avg(s6), w3: s3.n ? s3.wins / s3.n : null, n: s3.n, base3: avg(a3), base6: avg(a6),
+        tr: avg(P.split.train.signal) - avg(P.split.train.all), te: avg(P.split.test.signal) - avg(P.split.test.all), trn: P.split.train.signal.n, ten: P.split.test.signal.n }; }).sort((a, b) => b.d3 - a.d3);
+    const holds = (r) => isN(r.tr) && isN(r.te) && r.tr > 0 && r.te > 0;      // edge positive in BOTH periods
     out.innerHTML = `<div class="muted" style="margin:6px 0">${done} stocks tested. Sorted by the 3-month difference vs buying on any day.</div><div class="card scroll"><table><thead><tr><th class="l">Rule</th><th class="l">What it requires</th><th>Avg after 3 mo</th><th>vs any day</th><th>Win rate</th><th>Avg after 6 mo</th><th>vs any day</th><th>Samples</th></tr></thead><tbody>${rows.map((r) =>
       `<tr><td class="l"><b>${esc(r.P.name)}</b></td><td class="l muted" style="white-space:normal;max-width:300px">${esc(r.P.about)}</td><td class="${cls(r.a3)}">${pc(r.a3 * 100, 1)}</td><td class="${cls(r.d3)}"><b>${pc(r.d3 * 100, 1)}</b></td><td>${r.w3 == null ? '—' : Math.round(r.w3 * 100) + '%'}</td><td class="${cls(r.a6)}">${pc(r.a6 * 100, 1)}</td><td class="${cls(r.d6)}"><b>${pc(r.d6 * 100, 1)}</b></td><td class="muted">${r.n.toLocaleString()}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card scroll"><h3>Does the edge hold up? First ~3 years vs last ~2 years (3-month holds)</h3><table><thead><tr><th class="l">Rule</th><th>Edge, first 3 years</th><th>Edge, last 2 years</th><th>Samples (3y / 2y)</th><th class="l">Verdict</th></tr></thead><tbody>${rows.map((r) =>
+        `<tr><td class="l"><b>${esc(r.P.name)}</b></td><td class="${cls(r.tr)}">${isN(r.tr) ? pc(r.tr * 100, 1) : '—'}</td><td class="${cls(r.te)}">${isN(r.te) ? pc(r.te * 100, 1) : '—'}</td><td class="muted">${r.trn.toLocaleString()} / ${r.ten.toLocaleString()}</td><td class="l">${holds(r) ? '<span class="up"><b>Held up in both periods</b></span>' : isN(r.tr) && isN(r.te) && r.tr > 0 && r.te <= 0 ? '<span class="down">Worked early, failed recently</span>' : isN(r.tr) && isN(r.te) && r.tr <= 0 && r.te > 0 ? '<span style="color:var(--warn)">Only worked recently</span>' : '<span class="muted">No edge in either period</span>'}</td></tr>`).join('')}</tbody></table>
+        <div class="note">"Edge" is the average 3-month return after the rule fires minus the average after any day, over the same period. A rule that is positive in both periods is more believable than one that won in only one. The first period stops 63 days before the split so no look-ahead leaks across it. It's a sanity check, not proof.</div></div>
       <p class="note"><b>Read this carefully.</b> Picking the best of six rules after seeing the results is "data mining": the winner may just be lucky and can fail going forward. These are today's biggest companies (survivorship bias), samples on nearby days overlap, costs and taxes are ignored, and analyst/news rules can't be tested. Past results don't predict future returns.</p>
       <div id="matches"></div>`;
     renderMatches($('#matches'), rows, now);
@@ -277,4 +283,4 @@ async function aiPage(el) {
   draw();
 }
 
-const EXTRA_PAGES = { ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
+const EXTRA_PAGES = { views: (el) => viewsPage(el), ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };

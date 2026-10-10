@@ -89,6 +89,7 @@ svg text{fill:var(--mute);font-size:11px}
 <div id="tip"></div>
 <div id="toasts"></div>
 <script src="vendor/lightweight-charts.js"></script>
+<script src="analysis.js"></script>
 <script src="extras.js"></script>
 <script>
 // ---------- helpers ----------
@@ -326,7 +327,9 @@ async function renderMyWl() {
 
 // ---------- router ----------
 let timer;
+let navToken = 0;                                  // bumped on every navigation so a slow page load can't overwrite a newer page
 async function route() {
+  navToken++;
   clearInterval(timer);
   const sym = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
   window.scrollTo(0, 0);
@@ -354,8 +357,10 @@ const CHIPS = {
 };
 
 async function homeView() {
+  const tok = navToken;
   app.innerHTML = '<div class="loading">Loading the top 100 by market cap…</div>';
-  try { await loadHome(); } catch (e) { app.innerHTML = `<div class="err">Could not load data: ${esc(e.message)}</div>`; return; }
+  try { await loadHome(); } catch (e) { if (tok === navToken) app.innerHTML = `<div class="err">Could not load data: ${esc(e.message)}</div>`; return; }
+  if (tok !== navToken) return;                    // navigated away while loading
   renderHome();
   timer = setInterval(async () => { try { await loadHome(); renderTable(); renderMyWl(); } catch {} }, 60000);
 }
@@ -557,12 +562,15 @@ function barChart(el, labels, series) {
 }
 
 // ---------- detail ----------
-const TABS = ['Overview', 'Signal', 'Financials', 'Earnings', 'Deals & News', 'Analysts', 'Technicals & Alerts', 'Ownership', 'About'];
+const TABS = ['Overview', 'Signal', 'Valuation', 'Peers', 'Financials', 'Earnings', 'Earnings history', 'Deals & News', 'Analysts', 'Technicals & Alerts', 'Ownership', 'About'];
 async function detailView(sym) {
+  const tok = navToken;
   app.innerHTML = `<div class="loading">Loading ${esc(sym)}…</div>`;
   let s, pipe;
   try { [s, pipe] = await Promise.all([api('/api/stock/' + encodeURIComponent(sym)), api('/api/pipeline/' + encodeURIComponent(sym)).catch(() => null)]); }
-  catch (e) { app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back home</a></div>`; return; }
+  catch (e) {
+    if (tok !== navToken) return; app.innerHTML = `<div class="err">Couldn't load “${esc(sym)}”: ${esc(e.message)}<br><br><a href="#/">← Back home</a></div>`; return; }
+  if (tok !== navToken) return;                    // the user already moved on to another page
   const p = s.price || {}, tab = sessionStorage.getItem('tab') || 'Overview';
   app.innerHTML = `<a href="#/">← Home</a>
     <div class="hdr" style="margin-top:8px"><h2>${esc(p.shortName || sym)} <span class="muted" style="font-size:16px">${esc(sym)} · ${esc(p.exchangeName || '')}</span> <button class="star" id="hstar"></button> <span id="hsig"></span></h2></div>
@@ -581,6 +589,9 @@ async function detailView(sym) {
 const ttm = (arr) => arr && arr.length >= 4 ? arr.slice(-4).reduce((a, b) => a + (b.v ?? 0), 0) : null;
 
 const VIEWS = {
+  Valuation: (el, s) => valuationView(el, s),
+  Peers: (el, s) => peersView(el, s),
+  'Earnings history': (el, s) => earningsHistoryView(el, s),
   Overview(el, s) {
     const sd = s.summaryDetail || {}, ks = s.defaultKeyStatistics || {}, fd = s.financialData || {}, p = s.price || {};
     const fcf = fd.freeCashflow ?? ttm(s.quarterly.FreeCashFlow);

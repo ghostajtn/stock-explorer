@@ -105,19 +105,21 @@ const AI_SYMBOLS = [...new Set(Object.values(AI_GROUPS).flatMap((g) => g.split('
 
 // Analyst price targets are not in Yahoo's bulk quote feed, so they're fetched per stock (small
 // 'financialData' request, 8 at a time) and kept for 30 minutes. A failed lookup retries in ~5 minutes.
-const TARGETS = new Map();                                // symbol -> { t, mean, high, low }
+const TARGETS = new Map();                                // symbol -> { t, mean, high, low, sector, industry }
+let SHOWN = [];                                           // symbols currently on the home/AI pages (peer candidates)
+const SHOWN_CAPS = new Map();                             // symbol -> market cap, to pick peers closest in size
 let targetsRun = null;
 function refreshTargets(symbols) {
   if (targetsRun) return targetsRun;
-  const queue = symbols.filter((s) => { const x = TARGETS.get(s); return !x || Date.now() - x.t > 30 * 60e3; });
+  const queue = symbols.filter((s) => { const x = TARGETS.get(s); return !x || Date.now() - x.t > 30 * 60e3; });   // symbols are queued in the order given
   if (!queue.length) return Promise.resolve();
   const worker = async () => {
     for (let s; (s = queue.shift());) {
       try {
-        const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=financialData`);
-        const fd = unwrap(j.quoteSummary?.result?.[0] || {}).financialData || {};
-        TARGETS.set(s, { t: Date.now(), mean: fd.targetMeanPrice ?? null, high: fd.targetHighPrice ?? null, low: fd.targetLowPrice ?? null });
-      } catch { TARGETS.set(s, { t: Date.now() - 25 * 60e3, mean: null, high: null, low: null }); }
+        const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=financialData,assetProfile`);
+        const r = unwrap(j.quoteSummary?.result?.[0] || {}), fd = r.financialData || {};
+        TARGETS.set(s, { t: Date.now(), mean: fd.targetMeanPrice ?? null, high: fd.targetHighPrice ?? null, low: fd.targetLowPrice ?? null, sector: r.assetProfile?.sector ?? null, industry: r.assetProfile?.industry ?? null });
+      } catch { TARGETS.set(s, { t: Date.now() - 25 * 60e3, mean: null, high: null, low: null, sector: null, industry: null }); }
     }
   };
   return (targetsRun = Promise.all(Array.from({ length: 8 }, worker)).finally(() => { targetsRun = null; }));
@@ -126,8 +128,10 @@ function refreshTargets(symbols) {
 const top50 = () => cached('top50', 60e3, async () => {
   const quotes = await getQuotes([...new Set([...UNIVERSE, ...WATCHLIST, ...AI_SYMBOLS])]);
   const shown = new Set([...quotes.filter((q) => q.marketCap && UNIVERSE.includes(q.symbol)).sort((a, b) => b.marketCap - a.marketCap).slice(0, TOP_N).map((q) => q.symbol), ...WATCHLIST, ...AI_SYMBOLS]);
-  // Wait a few seconds so the first load already has most targets; the rest fill in on the next refresh.
-  await Promise.race([refreshTargets([...shown]), new Promise((r) => setTimeout(r, 7000))]);
+  // Peers may be any candidate, not just the ones on screen, so every candidate gets an industry and a market cap.
+  SHOWN = [...new Set([...shown, ...UNIVERSE, ...AI_SYMBOLS])]; quotes.forEach((q) => q.marketCap && SHOWN_CAPS.set(q.symbol, q.marketCap));
+  // Wait a few seconds so the first load already has the targets for what is shown; the rest fill in behind it.
+  await Promise.race([refreshTargets(SHOWN), new Promise((r) => setTimeout(r, 7000))]);
   const toRow = (q, rank) => ({
       rank,
       symbol: q.symbol,
@@ -168,6 +172,38 @@ const top50 = () => cached('top50', 60e3, async () => {
   })).filter((g) => g.rows.length);
   return { updated: Date.now(), rows, watch, ai };
 });
+
+// One stock's comparison metrics (a single light request, cached 30 min), used by the Peers tab.
+const peerData = (sym) => cached('peer:' + sym, 30 * 60e3, async () => {
+  const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=financialData,defaultKeyStatistics,summaryDetail,assetProfile,price`);
+  const r = unwrap(j.quoteSummary?.result?.[0] || {}), fd = r.financialData || {}, ks = r.defaultKeyStatistics || {}, sd = r.summaryDetail || {}, p = r.price || {};
+  const price = p.regularMarketPrice ?? null;
+  return {
+    symbol: sym, name: p.shortName || sym, sector: r.assetProfile?.sector ?? null, industry: r.assetProfile?.industry ?? null,
+    price, marketCap: p.marketCap ?? null, pe: sd.trailingPE ?? null, forwardPE: sd.forwardPE ?? null, peg: ks.pegRatio ?? null,
+    ps: sd.priceToSalesTrailing12Months ?? null, evEbitda: ks.enterpriseToEbitda ?? null,
+    revGrowth: fd.revenueGrowth ?? null, earnGrowth: fd.earningsGrowth ?? null, grossMargin: fd.grossMargins ?? null, opMargin: fd.operatingMargins ?? null,
+    netMargin: fd.profitMargins ?? null, roe: fd.returnOnEquity ?? null, debtEq: fd.debtToEquity ?? null, divYield: sd.dividendYield ?? null,
+    upside: price && fd.targetMeanPrice ? fd.targetMeanPrice / price - 1 : null, rating: fd.recommendationKey ?? null,
+  };
+});
+
+// Peers = other big stocks in the same industry (closest in size first), then the same sector, then Yahoo's "similar" list.
+async function peersOf(sym) {
+  await top50();                                          // makes sure the industry table (TARGETS/SHOWN) is filled
+  await Promise.race([refreshTargets(SHOWN), new Promise((r) => setTimeout(r, 20000))]);   // let the background industry lookups finish (up to 20 s)
+  const me = await peerData(sym), pool = [...new Set(SHOWN)].filter((s) => s !== sym);
+  const info = (s) => TARGETS.get(s) || {};
+  const byCap = (list) => list.map((s) => ({ s, d: Math.abs(Math.log((SHOWN_CAPS.get(s) || 1) / (me.marketCap || 1))) })).sort((a, b) => a.d - b.d).map((x) => x.s);
+  let basis = 'industry', syms = byCap(pool.filter((s) => me.industry && info(s).industry === me.industry));
+  if (syms.length < 3) { basis = 'sector'; syms = byCap(pool.filter((s) => me.sector && info(s).sector === me.sector)); }
+  if (syms.length < 3) {
+    basis = 'similar';
+    try { const j = await yahoo(`https://query2.finance.yahoo.com/v6/finance/recommendationsbysymbol/${encodeURIComponent(sym)}`, { crumb: false }); syms = (j.finance?.result?.[0]?.recommendedSymbols || []).map((x) => x.symbol); } catch { syms = []; }
+  }
+  const peers = (await Promise.allSettled(syms.slice(0, 6).map(peerData))).filter((x) => x.status === 'fulfilled').map((x) => x.value);
+  return { basis, industry: me.industry, sector: me.sector, self: me, peers };
+}
 
 const SUMMARY_MODULES = [
   'price', 'summaryDetail', 'defaultKeyStatistics', 'financialData', 'earningsHistory', 'earningsTrend',
@@ -282,6 +318,7 @@ http.createServer(async (req, res) => {
       return json(res, 200, qs.map((q) => ({ symbol: q.symbol, name: q.shortName || q.longName, price: q.regularMarketPrice, changePct: q.regularMarketChangePercent })));
     }
     let m;
+    if ((m = u.pathname.match(/^\/api\/peers\/([\w.\-^=]+)$/))) return json(res, 200, await cached('peers:' + m[1].toUpperCase(), 10 * 60e3, () => peersOf(m[1].toUpperCase())));
     if ((m = u.pathname.match(/^\/api\/signal\/([\w.\-^=]+)$/))) {
       const sym = m[1].toUpperCase(), s = await stock(sym);
       const c = await chart(sym, '1y').catch(() => null);

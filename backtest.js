@@ -51,11 +51,19 @@ export function runBacktests(bars) {
       for (let i = 199; i + h < n; i++) { const r = c[i + h] / c[i] - 1; all.push(r); if (on[i]) sig.push(r); }
       horizons[h] = { signal: summarize(sig), all: summarize(all) };
     }
+    // Honesty check: do the first ~60% of days (train) and the last ~40% (test) tell the same story?
+    // Train windows stop 63 days before the split so their look-ahead never reaches into the test period.
+    const last = n - 1 - 63, mid = 199 + Math.floor((last - 199) * 0.6), parts = { train: { sig: [], all: [] }, test: { sig: [], all: [] } };
+    for (let i = 199; i <= last; i++) {
+      const part = i <= mid - 63 ? parts.train : i > mid ? parts.test : null; if (!part) continue;
+      const r = c[i + 63] / c[i] - 1; part.all.push(r); if (on[i]) part.sig.push(r);
+    }
+    const split = { splitDate: bars[mid].t, train: { signal: summarize(parts.train.sig), all: summarize(parts.train.all) }, test: { signal: summarize(parts.test.sig), all: summarize(parts.test.all) } };
     const entries = [];                                       // first day of each run of setup days
     for (let i = 200; i < n; i++) if (on[i] && !on[i - 1]) entries.push({
       t: bars[i].t, price: c[i], r63: i + 63 < n ? c[i + 63] / c[i] - 1 : null, r126: i + 126 < n ? c[i + 126] / c[i] - 1 : null,
     });
-    out[key] = { name: p.name, about: p.about, days: n, from: bars[0].t, to: bars[n - 1].t, setupDays: on.filter(Boolean).length, nowInSetup: on[n - 1], horizons, entryCount: entries.length, entries: entries.slice(-8).reverse() };
+    out[key] = { name: p.name, about: p.about, days: n, from: bars[0].t, to: bars[n - 1].t, setupDays: on.filter(Boolean).length, nowInSetup: on[n - 1], horizons, split, entryCount: entries.length, entries: entries.slice(-8).reverse() };
   }
   return out;
 }
