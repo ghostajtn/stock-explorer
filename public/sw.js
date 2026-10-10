@@ -1,8 +1,8 @@
 // Service worker: makes the app installable and usable offline.
 // Strategy: network-first for everything (data should be fresh), falling back to the last
 // cached copy when offline. The app shell is pre-cached so it always opens.
-const CACHE = 'stock-explorer-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'stock-explorer-v4';
+const SHELL = ['./', 'index.html', 'extras.js', 'analysis.js', 'manifest.webmanifest', 'vendor/lightweight-charts.js', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

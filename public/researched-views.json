@@ -1,0 +1,132 @@
+[
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "NVDA",
+    "stance": "buy",
+    "target": 309,
+    "date": "2026-10-03",
+    "url": "https://www.youtube.com/watch?v=UhMrLPYfBa4",
+    "basis": "video description",
+    "note": "Base-case fair value $309, bear case $255, bull case $368. Built on a five-year free-cash-flow model (analyst revenue estimates, a constant 41.9% free-cash-flow margin, 50% shareholder payout)."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "AVGO",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-09-28",
+    "url": "https://www.youtube.com/watch?v=stYSZxRpevo",
+    "basis": "video description",
+    "note": "Says he owns Broadcom and is buying more at its current valuation. No price target given in the description."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "AMD",
+    "stance": "hold",
+    "target": null,
+    "date": "2026-09-28",
+    "url": "https://www.youtube.com/watch?v=stYSZxRpevo",
+    "basis": "video title and description",
+    "note": "Says he is passing on AMD for his own portfolio (while owning AVGO and NVDA). A pass, not a call that AMD is overvalued."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "SOFI",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-10-04",
+    "url": "https://www.youtube.com/watch?v=rWck2aXSVu4",
+    "basis": "video description",
+    "note": "Says he remains bullish on SoFi and compares its valuation with Robinhood and traditional banks. No price target in the description."
+  },
+  {
+    "who": "Amit Kukreja & Steven Fiorillo (live show)",
+    "ticker": "SPCX",
+    "stance": "overvalued",
+    "target": null,
+    "date": "2026-04-03",
+    "url": "https://www.youtube.com/watch?v=kLl9nQB0HiM",
+    "basis": "transcript (speakers are not labelled, so not attributed to one person)",
+    "note": "Discussing SpaceX's reported $1.75 to $2 trillion IPO valuation on under about $20 billion of revenue: a speaker says the valuation makes no sense, wonders if it could fall 50% before going higher, and says Tesla's valuation never made sense either. One speaker still likes the defence and Golden Dome angle. Said before the June 2026 listing."
+  },
+  {
+    "who": "Amit Kukreja & Steven Fiorillo (live show)",
+    "ticker": "RKLB",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-04-03",
+    "url": "https://www.youtube.com/watch?v=kLl9nQB0HiM",
+    "basis": "transcript (speakers are not labelled)",
+    "note": "Casual live chat, not a formal target: they discuss buying Rocket Lab as a SpaceX-IPO play, mention it could reach about $100 if SpaceX hits $2.5 trillion and 'like 200' as a hope, and one speaker says they would rather own Rocket Lab than SpaceX at that price."
+  },
+  {
+    "who": "Amit Kukreja & Steven Fiorillo (live show)",
+    "ticker": "ORCL",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-04-03",
+    "url": "https://www.youtube.com/watch?v=kLl9nQB0HiM",
+    "basis": "transcript (speakers are not labelled)",
+    "note": "A speaker calls Oracle a decent proxy for OpenAI with a much more reasonable valuation and thinks the hedging against Oracle (credit default swaps) has largely peaked. Mildly positive conversation, not a recommendation."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "CRWV",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-07-25",
+    "url": "https://www.youtube.com/watch?v=zGcL6_71u8w",
+    "basis": "video title and description",
+    "note": "Says he is buying CoreWeave after a sharp selloff. His case in the description: revenue backlog of $99.4B after more than $40B of new Q1 commitments, and he prefers to trade 'cash flow statements and contracted demand' over headlines. No price target in the description."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "ORCL",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-07-25",
+    "url": "https://www.youtube.com/watch?v=zGcL6_71u8w",
+    "basis": "video title and description",
+    "note": "Says he is buying Oracle after the selloff. Cites a record Q4 with remaining performance obligations up 363% year over year, even though the stock had its worst month since September 1990. No price target in the description."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "AMZN",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "MSFT",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "META",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  },
+  {
+    "who": "Steven Fiorillo",
+    "ticker": "GOOGL",
+    "stance": "buy",
+    "target": null,
+    "date": "2026-06-23",
+    "url": "https://www.youtube.com/watch?v=--5UK4iO56E",
+    "basis": "video title and description",
+    "note": "Says Amazon, Microsoft, Meta and Alphabet are undervalued and backs it with numbers in the video (chapters: capex concerns, long-term cash flow, forward valuation disconnect). One video covers all four, and the description gives no price targets."
+  }
+]

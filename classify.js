@@ -5,13 +5,23 @@
  * Does this headline describe a business deal — M&A, partnership, supply
  * contract, investment, financing, licensing — i.e. something that moves
  * future revenue or ownership?
- *
- * TODO(human): implement this (roughly 5-10 lines). Return true/false.
  */
+const DEAL_WORDS = [
+  'acqui(?:re|res|red|sition|sitions)', 'merger', 'merge(?:s|d)? with', 'buyout', 'takeover', 'take(?:s)? private',
+  'to buy\\b', 'buys\\b', 'bought\\b', 'agrees? to (?:buy|sell|acquire)', 'divest', 'spin-?off', 'carve-?out',
+  'partner(?:s|ed|ship|ships)?\\b', 'joint venture', 'strategic (?:alliance|investment)', 'collaborat(?:es|ion|ing)',
+  'signs?\\b.*\\b(?:deal|contract|agreement)', 'inks?\\b', 'lands?\\b.*\\b(?:contract|order|deal)', 'wins?\\b.*\\b(?:contract|order|award)',
+  'awarded', 'supply (?:deal|agreement|contract)', 'licens(?:e|es|ing) (?:deal|agreement)', 'offtake',
+  'invests? \\$?[\\d.]+', 'investment of \\$?[\\d.]+', 'stake in', 'funding round', 'raises? \\$[\\d.]+',
+  'notes offering', 'debt offering', 'private placement', 'secures? (?:financing|funding|\\$[\\d.]+)',
+];
+// Word patterns must start at a word boundary ("inks" must not match inside "Starlink").
+const DEAL_RE = new RegExp(`\\b(?:${DEAL_WORDS.join('|')})|\\$[\\d.,]+\\s?(?:billion|million|b|m)\\b.*\\b(?:deal|contract|agreement|investment|order)`, 'i');
+// Consumer "deals" (sales, discounts, shopping events) are not business deals.
+const NOT_DEAL_RE = /black friday|cyber monday|prime day|best deals?|top deals?|deals? of the day|discount|coupon|promo code|on sale\b/i;
+
 function isDealHeadline(title) {
-  const t = title.toLowerCase();
-  // Placeholder: nothing is a deal until you decide what counts.
-  return false;
+  return DEAL_RE.test(title) && !NOT_DEAL_RE.test(title);
 }
 
 export function classifyHeadline(title) {
