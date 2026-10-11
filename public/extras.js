@@ -152,7 +152,7 @@ async function portfolioPage(el) {
 
 // ---------- strategy lab ----------
 async function labPage(el) {
-  el.innerHTML = pageHead('Strategy lab', 'Compares six price-based rules over the last 5 years on the top 100 stocks. Each shows the average return after the rule fires, against buying on any random day.') +
+  el.innerHTML = pageHead('Strategy lab', 'Compares nine price-based rules over the last 5 years on the top 100 stocks. Each shows the average return after the rule fires, against buying on any random day.') +
     (STATIC ? '<div class="card muted">The lab needs the local app (it runs the backtests on the server).</div>' : '<div class="toolbar"><button class="chip" id="labgo">Run the lab (takes about 30 seconds)</button></div><div id="labout"></div>') + NOT_ADVICE;
   if (STATIC) return;
   $('#labgo').onclick = async () => {
