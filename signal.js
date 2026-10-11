@@ -70,5 +70,8 @@ export function computeSignal(s, closes, now = Date.now()) {
   const rule = get('Strong analyst') === true && get('Short-term news') === true && get('Longer-term news') === true &&
     get('Price is above') !== false && get('Healthy momentum') !== false;
   const verdict = known < 5 ? 'nodata' : rule && score >= 85 ? 'buy' : score >= 55 ? 'watch' : score >= 35 ? 'neutral' : 'caution';
-  return { symbol: s.symbol, price: px, score, verdict, rule, known, checks, asOf: now };
+  // "Oversold bounce": RSI(14) below 30. This was the best-tested price rule in the Strategy lab (see backtest.js),
+  // so it is reported on its own, separately from the Buy-setup score.
+  const bounce = { on: rsi != null && rsi < 30, rsi: rsi == null ? null : Math.round(rsi * 10) / 10 };
+  return { symbol: s.symbol, price: px, score, verdict, rule, known, checks, bounce, asOf: now };
 }

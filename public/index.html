@@ -230,11 +230,12 @@ function earnWarn(s) {
 // Alert when a watched stock newly becomes a "Buy setup" (checked every 5 minutes while the app is open).
 async function checkSignals() {
   if (STATIC) return;
-  for (const w of wl.get().filter((x) => x.sig)) {
+  for (const w of wl.get().filter((x) => x.sig || x.bounce)) {
     let sig; try { sig = await getSignal(w.s); } catch { continue; }
     const list = wl.get(), cur = list.find((x) => x.s === w.s); if (!cur) continue;
-    if (sig.verdict === 'buy' && cur.lastVerdict !== 'buy') toast(`${w.s} just became a Buy setup (score ${sig.score}/100). This is a checklist, not advice. Review it before acting.`);
-    cur.lastVerdict = sig.verdict; wl.set(list);
+    if (cur.sig && sig.verdict === 'buy' && cur.lastVerdict !== 'buy') toast(`${w.s} just became a Buy setup (score ${sig.score}/100). This is a checklist, not advice. Review it before acting.`);
+    if (cur.bounce && sig.bounce?.on && !cur.lastBounce) toast(`${w.s} is oversold (RSI ${sig.bounce.rsi}). Oversold stocks can keep falling, so check the news before acting. Not advice.`);
+    cur.lastVerdict = sig.verdict; cur.lastBounce = !!sig.bounce?.on; wl.set(list);
   }
 }
 setInterval(checkSignals, 300e3); setTimeout(checkSignals, 8000);
@@ -287,6 +288,10 @@ async function scanSignals() {
   const hits = done.filter((x) => x.verdict === 'buy' || x.verdict === 'watch').sort((a, b) => b.score - a.score);
   box.innerHTML = `<div class="muted" style="margin-bottom:8px">Scanned ${done.length} stocks at ${new Date().toLocaleTimeString()}. ${hits.filter((x) => x.verdict === 'buy').length} Buy setups, ${hits.filter((x) => x.verdict === 'watch').length} on Watch. A checklist, not advice.</div>` +
     (hits.length ? `<table><thead><tr><th class="l">Stock</th><th>Signal</th><th>Score</th><th>Price</th></tr></thead><tbody>${hits.map((x) => `<tr class="row" data-s="${esc(x.symbol)}"><td class="l"><span class="sym">${esc(x.symbol)}</span></td><td>${verdictChip(x.verdict)}</td><td>${x.score}/100</td><td>${usd(x.price)}</td></tr>`).join('')}</tbody></table>` : '<div class="muted">Nothing passes right now.</div>');
+  const dips = done.filter((x) => x.bounce?.on).sort((a, b) => a.bounce.rsi - b.bounce.rsi);        // most oversold first
+  box.insertAdjacentHTML('beforeend', `<h3 style="margin-top:16px">Oversold bounce right now (RSI below 30)</h3>` + (dips.length
+    ? `<div class="muted" style="font-size:12px;margin-bottom:6px">The best-tested rule in the Strategy lab. A candidate to research, not a recommendation: check why it fell.</div><table><thead><tr><th class="l">Stock</th><th>RSI(14)</th><th>Buy-setup score</th><th>Price</th></tr></thead><tbody>${dips.map((x) => `<tr class="row" data-s="${esc(x.symbol)}"><td class="l"><span class="sym">${esc(x.symbol)}</span></td><td>${nf(x.bounce.rsi, 1)}</td><td>${x.score}/100</td><td>${usd(x.price)}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="muted">No stock in the list has an RSI below 30 right now.</div>'));
   box.querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
 }
 
@@ -387,7 +392,7 @@ function renderHome() {
       <span class="muted" id="count"></span>
     </div>
     <div class="card scroll"><h3>★ My watchlist</h3><div id="mywl"></div></div>
-    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan the top 100 for Buy setups</button><button class="chip" id="btallbtn">Backtest the rule on all 100 (5 years)</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div><div id="btall"></div></div>`}
+    ${STATIC ? '' : `<div class="card scroll"><h3>Buy-setup scanner</h3><div class="toolbar"><button class="chip" id="scanbtn">Scan the top 100 for Buy setups and oversold bounces</button><button class="chip" id="btallbtn">Backtest the rule on all 100 (5 years)</button><span class="muted" style="font-size:12px">Checks analysts, news, trend and fundamentals for each stock (about a minute). A checklist, not advice.</span></div><div id="scan"></div><div id="btall"></div></div>`}
     <div class="card scroll" style="padding:0"><table id="tbl"></table></div>
     <p class="note">Top 100 ranked live by market cap from a ~230-company candidate list. Data: Yahoo Finance (delayed/unofficial). Not investment advice. Click a row for full detail.</p>`;
   $('#flt').oninput = (e) => { home.filter = e.target.value; renderTable(); };
@@ -579,7 +584,7 @@ async function detailView(sym) {
     <div class="tabs">${TABS.map((t) => `<div class="tab ${t === tab ? 'on' : ''}" data-t="${t}">${t}</div>`).join('')}</div>
     <div id="pane"></div>`;
   wlSym = sym.toUpperCase(); renderWlBar();
-  if (!STATIC) getSignal(wlSym).then((g) => { const h = $('#hsig'); if (h) h.innerHTML = verdictChip(g.verdict); }).catch(() => {});
+  if (!STATIC) getSignal(wlSym).then((g) => { const h = $('#hsig'); if (h) h.innerHTML = verdictChip(g.verdict) + (g.bounce?.on ? ' <span class="verdict" style="border-color:var(--accent);color:var(--accent)" title="RSI(14) is below 30">Oversold bounce</span>' : ''); }).catch(() => {});
   const show = (t) => { sessionStorage.setItem('tab', t); app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x.dataset.t === t)); const pane = $('#pane'); pane.innerHTML = ''; VIEWS[t](pane, s, pipe); };
   app.querySelectorAll('.tab').forEach((t) => t.onclick = () => show(t.dataset.t));
   show(tab);
@@ -719,7 +724,13 @@ const VIEWS = {
     el.innerHTML = '<div class="loading">Checking the signal…</div>';
     let sig; try { sig = await getSignal(s.symbol); } catch (e) { el.innerHTML = `<div class="card err">${STATIC ? 'Signals need the local app (the published snapshot has no live checks).' : esc(e.message)}</div>`; return; }
     const [label, color] = VERDICT[sig.verdict], groups = [...new Set(sig.checks.map((c) => c.group))], w = wl.find(s.symbol);
-    el.innerHTML = `<div class="card"><h3>Buy-setup checklist</h3>
+    const bn = sig.bounce || {}, bnColor = bn.on ? 'var(--accent)' : 'var(--mute)';
+    el.innerHTML = `<div class="card"><h3>Oversold bounce (the best-tested rule)</h3>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span class="price" style="color:${bnColor}">${bn.on ? 'ON' : 'Off'}</span><span class="muted">RSI(14) is ${isN(bn.rsi) ? nf(bn.rsi, 1) : 'n/a'}${bn.on ? ', below the trigger of 30' : '. It turns on below 30'}</span></div>
+        <div class="muted" style="font-size:13px;margin-top:6px">In the Strategy lab's 5-year test on 101 large US stocks, buying when RSI(14) was under 30 returned about <b>+8.9%</b> over the next 3 months, <b>2.3 points better</b> than buying on a random day, and the edge showed up in both the first 3 years and the last 2. It is one of only two of the nine rules tested that passed that split check (the other is "pullback in an uptrend"). <a href="#/~lab">See the test</a>.</div>
+        <div class="note">Limits: those were large, mostly winning companies in a strong market, so dips got bought. A stock that is oversold because of bad news, fraud or a failing business can keep falling, so read the headlines first. Past results don't predict future returns.</div>
+        <div class="alerts" style="margin-top:12px"><label><input type="checkbox" id="bncalert" ${w?.bounce ? 'checked' : ''}> Alert me when <b>${esc(s.symbol)}</b> turns oversold (RSI below 30)</label>${STATIC ? '<span class="muted">(needs the local app)</span>' : ''}</div></div>
+      <div class="card"><h3>Buy-setup checklist</h3>
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span class="price" style="color:${color}">${label}</span><span class="muted">Score ${sig.score} / 100</span></div>
         <div class="scorebar"><i style="width:${sig.score}%;background:${color}"></i></div>
         <div class="muted" style="font-size:13px">A <b>Buy setup</b> needs a score of 85+ <em>and</em> your rule: analysts say Buy, short-term news is bullish (headlines, last 7 days), long-term news is bullish (analyst upgrades vs downgrades, 90 days), and the trend is healthy (above the 200-day average, not overbought).
@@ -734,6 +745,12 @@ const VIEWS = {
           <path d="${h.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="2"/>${h.map((p, i) => `<circle cx="${X(i)}" cy="${Y(p[1])}" r="3" fill="${VERDICT[p[2]][1]}"><title>${p[0]}: ${p[1]} (${VERDICT[p[2]][0]})</title></circle>`).join('')}</svg><div class="muted" style="font-size:12px">${h.length} days saved, from ${h[0][0]} to ${h[h.length - 1][0]}.</div>`;
       })()}</div>
       <p class="note">This is an automatic checklist built from public data (Yahoo Finance) and headline wording. It cannot know your goals, risk or tax situation, and past patterns don't guarantee future results. It is information, not investment advice, and the app never buys or sells anything. Do your own research before acting.</p>`;
+    $('#bncalert', el).onchange = (e) => {
+      const l = wl.get(); let x = l.find((y) => y.s === s.symbol); if (!x) l.push(x = { s: s.symbol });
+      x.bounce = e.target.checked; x.lastBounce = !!sig.bounce?.on; wl.set(l);
+      try { if (e.target.checked && window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch {}
+      renderWlBar();
+    };
     el.insertAdjacentHTML('beforeend', '<div class="card" id="bt"><h3>Backtest: how the price-based rule did on this stock (5 years)</h3><div class="loading">Running…</div></div>');
     api('/api/backtest/' + encodeURIComponent(s.symbol)).then(({ result: r }) => {
       const bt = $('#bt', el); if (!bt) return;
