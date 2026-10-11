@@ -14,6 +14,10 @@ export const PRESETS = {
   pullback: { name: 'Pullback in an uptrend', about: 'Above 200-day, RSI 30–45 (a dip inside a rising trend)', test: (x) => x.px > x.ma200 && x.rsi >= 30 && x.rsi <= 45 },
   breakout: { name: 'Breakout', about: 'Above 50-day, golden cross, RSI 55–75', test: (x) => x.px > x.ma50 && x.ma50 > x.ma200 && x.rsi >= 55 && x.rsi <= 75 },
   oversold: { name: 'Oversold bounce', about: 'RSI below 30, any trend (mean reversion)', test: (x) => x.rsi < 30 },
+  // Rules taken from TradingLab videos (checked against data rather than taken on trust):
+  tlscore: { name: 'Trend score +4 (TradingLab video 2)', about: 'Price is up over each of the last 1 week, 2 weeks, 1 month and 2 months (5, 10, 21, 42 trading days)', test: (x) => x.r5 > 0 && x.r10 > 0 && x.r21 > 0 && x.r42 > 0 },
+  donchian: { name: '20-day breakout (Donchian)', about: "Close above the highest close of the previous 20 days (a close-based version of video 10's A-tier channel)", test: (x) => x.px > x.hi20 },
+  ma200touch: { name: 'Buy near the 200-day average', about: 'Price within -2% to +3% of a rising 200-day average (video 10: 200-day as a buy zone)', test: (x) => x.px / x.ma200 - 1 >= -0.02 && x.px / x.ma200 - 1 <= 0.03 && x.ma200 > x.ma200prev },
 };
 
 function rsiSeries(c, n = 14) {
@@ -44,7 +48,10 @@ export function runBacktests(bars) {
   if (n < 330) return null;                                   // need 200 days of warm-up plus room to look ahead
   const ma50 = smaSeries(c, 50), ma200 = smaSeries(c, 200), rsi = rsiSeries(c), out = {};
   for (const [key, p] of Object.entries(PRESETS)) {
-    const on = c.map((px, i) => i >= 199 && rsi[i] != null && p.test({ px, ma50: ma50[i], ma200: ma200[i], rsi: rsi[i] }));
+    const on = c.map((px, i) => i >= 199 && rsi[i] != null && p.test({
+      px, ma50: ma50[i], ma200: ma200[i], rsi: rsi[i], ma200prev: ma200[i - 20],
+      r5: px / c[i - 5] - 1, r10: px / c[i - 10] - 1, r21: px / c[i - 21] - 1, r42: px / c[i - 42] - 1, hi20: Math.max(...c.slice(i - 20, i)),
+    }));
     const horizons = {};
     for (const h of HORIZONS) {
       const sig = [], all = [];
