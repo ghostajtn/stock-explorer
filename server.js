@@ -88,7 +88,7 @@ async function getQuotes(symbols) {
 }
 
 // Always shown above the table, whatever their market-cap rank. Add tickers here.
-const WATCHLIST = ['NBIS', 'MRNA'];
+const WATCHLIST = ['NBIS', 'MRNA', 'ONDS'];
 
 // The AI supply chain, grouped. Shown on the AI stocks page whatever their market-cap rank;
 // a ticker Yahoo has no quote for is skipped. Add or move tickers here.
