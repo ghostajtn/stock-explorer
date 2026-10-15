@@ -2,7 +2,7 @@
 // dividends, plus the nav and market strip. Loaded before the main script; everything here runs
 // later (from the router or DOMContentLoaded), when the helpers in index.html ($, api, nf, usd...) exist.
 
-const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~bonds', 'Bonds'], ['~calendar', 'Earnings'], ['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~views', 'Creator views'], ['~dividends', 'Dividends']];
+const NAV = [['', 'Home'], ['~ai', 'AI stocks'], ['~heatmap', 'Heatmap'], ['~bonds', 'Bonds'], ['~calendar', 'Earnings'], ['~econ', 'Economy'],['~compare', 'Compare'], ['~portfolio', 'Portfolio'], ['~lab', 'Strategy lab'], ['~views', 'Creator views'], ['~dividends', 'Dividends']];
 function renderNav(sym) {
   $('#nav').innerHTML = NAV.map(([h, label]) => `<a href="#/${h}" class="${(h === '' ? sym === '' : sym.startsWith(h)) ? 'on' : ''}">${label}</a>`).join('');
 }
@@ -77,6 +77,29 @@ async function calendarPage(el) {
       return `<tr class="row" data-s="${esc(r.symbol)}"><td class="l">${new Date(r.earningsTs * 1000).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} <span class="muted">${d <= 0 ? '(today)' : '(' + d + 'd)'}</span></td><td class="l"><span class="sym">${mine.has(r.symbol) ? '★ ' : ''}${esc(r.symbol)}</span><span class="nm">${esc(r.name || '')}</span></td><td>${nf(r.price)}</td><td class="${cls(r.changePct)}">${pc(r.changePct)}</td><td>${nf(r.eps)}</td><td>${nf(r.epsForward)}</td><td>${esc((r.rating || '—').replace(/^\d+(\.\d+)?\s*-\s*/, ''))}</td></tr>`;
     }).join('')}</tbody></table></div>`).join('') || '<div class="card muted">No earnings dates in the next 45 days.</div>') + '<p class="note">Dates come from Yahoo and can shift; companies confirm them shortly before reporting.</p>' + NOT_ADVICE;
   el.querySelectorAll('tr.row').forEach((tr) => tr.onclick = () => location.hash = '#/' + tr.dataset.s);
+}
+
+// ---------- economic calendar (Fed + BEA, official schedules) ----------
+async function econPage(el) {
+  if (STATIC) { el.innerHTML = pageHead('Economic calendar', 'Needs the local server.') + '<div class="card muted">Run Stock-Explorer-App.bat to see the economic calendar.</div>'; return; }
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  const d = await api('/api/econ'), local = (s) => { const [y, m, dd] = s.split('-').map(Number); return new Date(y, m - 1, dd); };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const evs = d.events.filter((e) => local(e.date) < new Date(today.getTime() + 120 * 864e5));
+  const weekOf = (dt) => { const x = new Date(dt); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x.getTime(); };
+  const weeks = new Map(); evs.forEach((e) => { const k = weekOf(local(e.date)); (weeks.get(k) || weeks.set(k, []).get(k)).push(e); });
+  const dot = { high: '#da3633', medium: '#d29922', low: '#6e7681' }, lab = { high: 'Market-moving', medium: 'Notable', low: 'Minor' };
+  const nextFed = evs.find((e) => e.kind === 'Fed' && /rate decision/.test(e.title));
+  const days = nextFed && Math.round((local(nextFed.date) - today) / 864e5);
+  el.innerHTML = pageHead('Economic calendar', 'Fed meetings and official US economic releases for the next 120 days. These can move stocks and bond yields sharply, so check here before you act on a signal.') +
+    (nextFed ? `<div class="card"><h3>Next Fed decision</h3><div style="font-size:20px"><b>${local(nextFed.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</b> <span class="muted">(${days <= 0 ? 'today' : 'in ' + days + ' day' + (days === 1 ? '' : 's')}) · ${esc(nextFed.time)}</span></div><div class="muted" style="margin-top:4px">${esc(nextFed.title)}. ${esc(nextFed.note || '')}</div></div>` : '') +
+    ([...weeks].map(([k, list]) => `<div class="card scroll"><h3>Week of ${new Date(k).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h3><table><thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Event</th><th class="l">Source</th><th class="l">Impact</th></tr></thead><tbody>${list.map((e) => {
+      const n = Math.round((local(e.date) - today) / 864e5);
+      return `<tr><td class="l">${local(e.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} <span class="muted">${n <= 0 ? '(today)' : '(' + n + 'd)'}</span></td><td class="l">${esc(e.time || '—')}</td><td class="l">${esc(e.title)}</td><td class="l">${e.kind === 'Fed' ? 'Federal Reserve' : 'Bureau of Economic Analysis'}</td><td class="l"><span style="color:${dot[e.level]}">●</span> ${lab[e.level]}</td></tr>`;
+    }).join('')}</tbody></table></div>`).join('') || '<div class="card muted">No events found.</div>') +
+    (d.missing?.length ? `<div class="card muted">Could not load: ${esc(d.missing.join(', '))}. Try again later.</div>` : '') +
+    `<div class="card"><h3>Not included: inflation (CPI) and jobs report</h3><div class="muted">The Bureau of Labor Statistics blocks automated access, so the CPI and monthly jobs report dates are not shown here rather than guessed. See the official schedule: <a href="https://www.bls.gov/schedule/news_release/" target="_blank" rel="noopener">bls.gov release calendar</a>.</div></div>` +
+    '<p class="note">Sources: federalreserve.gov (FOMC calendar) and bea.gov (release schedule). Dates can change; check the source before a big decision. Information only, not investment advice.</p>';
 }
 
 // ---------- compare ----------
@@ -327,4 +350,4 @@ async function aiPage(el) {
   draw();
 }
 
-const EXTRA_PAGES = { bonds: bondsPage, views: (el) => viewsPage(el), ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };
+const EXTRA_PAGES = { bonds: bondsPage, views: (el) => viewsPage(el), ai: aiPage, heatmap: heatmapPage, calendar: calendarPage, econ: econPage,compare: comparePage, portfolio: portfolioPage, lab: labPage, dividends: dividendsPage };

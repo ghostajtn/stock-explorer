@@ -206,6 +206,52 @@ const bondNews = async () => {
     .sort((a, b) => b.ts - a.ts).slice(0, 25).map((n) => ({ ...n, move: up.test(n.title) ? 'up' : down.test(n.title) ? 'down' : null }));
 };
 
+// Economic calendar from two official sources that allow automated reads: the Fed's FOMC schedule and the BEA
+// release schedule (GDP, PCE inflation, trade...). BLS (CPI, jobs report) blocks automated access, so those dates are
+// not included and the page links to BLS instead. Dates are plain 'YYYY-MM-DD' strings (no timezone shifting).
+const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const ymd = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const monthNo = (s) => MONTHS[String(s).trim().slice(0, 3).toLowerCase()];
+const fomcEvents = async () => {
+  const html = await (await fetch('https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm', { headers: UA })).text();
+  const out = [], heads = [...html.matchAll(/(\d{4}) FOMC Meetings/g)];
+  heads.forEach((h, i) => {
+    const year = +h[1], seg = html.slice(h.index, heads[i + 1]?.index ?? html.length);
+    for (const chunk of seg.split('fomc-meeting__month').slice(1)) {
+      const mon = chunk.match(/<strong>([^<]+)<\/strong>/)?.[1], dt = chunk.match(/fomc-meeting__date[^>]*>\s*([^<]+?)\s*</)?.[1];
+      if (!mon || !dt) continue;
+      const sep = dt.includes('*'), days = dt.replace('*', '').split('-').map((x) => parseInt(x, 10)), ms = mon.split('/').map(monthNo);
+      if (ms.some((x) => !x) || days.some((x) => !x)) continue;
+      const m1 = ms[0], m2 = ms[ms.length - 1], d1 = days[0], d2 = days[days.length - 1];
+      out.push({ date: ymd(year, m1, d1), time: null, title: 'FOMC meeting begins (day 1 of 2)', kind: 'Fed', level: 'low' });
+      out.push({ date: ymd(year, m2, d2), time: '2:00 PM ET', title: 'FOMC interest-rate decision' + (sep ? ' + new economic projections' : ''), kind: 'Fed', level: 'high',
+        note: 'Statement at 2:00 PM ET; Chair press conference follows at 2:30 PM ET.' });
+      const rel = chunk.match(/Released\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
+      if (rel && monthNo(rel[1])) out.push({ date: ymd(+rel[3], monthNo(rel[1]), +rel[2]), time: '2:00 PM ET', title: `FOMC minutes (${mon} meeting)`, kind: 'Fed', level: 'medium' });
+    }
+  });
+  return out;
+};
+const beaEvents = async () => {
+  const html = await (await fetch('https://www.bea.gov/news/schedule', { headers: UA })).text();
+  const out = []; let year = new Date().getFullYear();
+  for (const m of html.matchAll(/Year (\d{4})<|<tr class="scheduled-releases-type-press">([\s\S]*?)<\/tr>/g)) {
+    if (m[1]) { year = +m[1]; continue; }
+    const row = m[2], dm = row.match(/release-date">\s*([A-Za-z]+)\s+(\d{1,2})\s*</), tm = row.match(/text-muted">\s*([^<]+?)\s*</), title = row.match(/release-title[^>]*>\s*([^<]+?)\s*</)?.[1];
+    if (!dm || !monthNo(dm[1]) || !title) continue;
+    const high = /^GDP|Personal Income and Outlays/i.test(title), mid = /Trade in Goods and Services|Corporate Profits|Industry/i.test(title);
+    out.push({ date: ymd(year, monthNo(dm[1]), +dm[2]), time: tm ? tm[1].replace(/\s*ET$/i, '') + ' ET' : null, title: title.replace(/\s+/g, ' '), kind: 'BEA', level: high ? 'high' : mid ? 'medium' : 'low' });
+  }
+  return out;
+};
+const econCalendar = async () => {
+  const [fed, bea] = await Promise.allSettled([fomcEvents(), beaEvents()]);
+  const today = new Date(), from = ymd(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const events = [...(fed.value || []), ...(bea.value || [])].filter((e) => e.date >= from)
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.time).localeCompare(String(b.time)));
+  return { updated: Date.now(), events, missing: [fed, bea].map((r, i) => r.status === 'rejected' ? ['Fed', 'BEA'][i] : null).filter(Boolean) };
+};
+
 // One stock's comparison metrics (a single light request, cached 30 min), used by the Peers tab.
 const peerData = (sym) => cached('peer:' + sym, 30 * 60e3, async () => {
   const j = await yahoo(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=financialData,defaultKeyStatistics,summaryDetail,assetProfile,price`);
@@ -347,7 +393,8 @@ http.createServer(async (req, res) => {
       return json(res, 200, MK.map(([symbol, name]) => { const q = qs.find((x) => x.symbol === symbol) || {}; return { symbol, name, price: q.regularMarketPrice ?? null, change: q.regularMarketChange ?? null, changePct: q.regularMarketChangePercent ?? null }; }));
     }
     if (pn === '/api/bonds') return json(res, 200, await cached('bonds', 30e3, bonds));
-    if (pn === '/api/bondnews') return json(res, 200, await cached('bondnews', 10 * 60e3, bondNews));
+    if (pn === '/api/econ') return json(res, 200, await cached('econ', 6 * 3600e3, econCalendar));
+    if (pn === '/api/bondnews')return json(res, 200, await cached('bondnews', 10 * 60e3, bondNews));
     if (pn === '/api/quotes') {
       // Live prices for the browser-side watchlist/alerts: ?symbols=AAPL,MSFT (max 50).
       const syms = (u.searchParams.get('symbols') || '').toUpperCase().split(',').filter((s) => /^[\w.\-^=]{1,12}$/.test(s)).slice(0, 100);
